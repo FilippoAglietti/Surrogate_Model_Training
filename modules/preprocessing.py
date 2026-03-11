@@ -18,7 +18,7 @@ class PreprocessingFrame(ctk.CTkFrame):
         super().__init__(master, **kwargs)
         
         self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(2, weight=1)
+        self.grid_rowconfigure(1, weight=1)
         
         # Header
         self.header = ctk.CTkLabel(self, text="PREPROCESSING 🔧", font=FONTS["title"], text_color=COLORS["cyan"])

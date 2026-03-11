@@ -17,7 +17,7 @@ class ResultsFrame(ctk.CTkFrame):
         super().__init__(master, **kwargs)
         
         self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(2, weight=1)
+        self.grid_rowconfigure(1, weight=1)
         
         self.header = ctk.CTkLabel(self, text="RESULTS & ANALYSIS 📊", font=FONTS["title"], text_color=COLORS["cyan"])
         self.header.grid(row=0, column=0, pady=(30, 20), sticky="w", padx=30)
@@ -30,7 +30,7 @@ class ResultsFrame(ctk.CTkFrame):
 
     def on_show(self):
         if not get_state("trained"):
-            self._show_blocked("Train a model first.\n← Go to 'Training Dashboard'")
+            self._show_blocked("Train a model first.\n← Go to 'Model Builder'")
             return
             
         if not self.built_ui:

@@ -15,6 +15,7 @@ COLORS = {
     # Neon Accents
     "primary": "#00FF41",      # Matrix Green
     "primary_dark": "#00CC33",
+    "green": "#00CC33",        # Alias
     "cyan": "#00E5FF",         # Electric Blue
     "magenta": "#FF00FF",      # Cyberpunk Pink
     "orange": "#FF6E40",       # Coral/Orange

@@ -8,7 +8,6 @@ from modules.data_loading import DataLoadingFrame
 from modules.preprocessing import PreprocessingFrame
 from modules.model_builder import ModelBuilderFrame
 from modules.hyperopt import HyperoptFrame
-from modules.training import TrainingFrame
 from modules.results import ResultsFrame
 
 
@@ -53,7 +52,6 @@ class App(ctk.CTk):
             ("🔧  Preprocessing", PreprocessingFrame),
             ("🏗  Model Builder", ModelBuilderFrame),
             ("🔍  Hyperopt", HyperoptFrame),
-            ("🚀  Training", TrainingFrame),
             ("📊  Results", ResultsFrame)
         ]
         

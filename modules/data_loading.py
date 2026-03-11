@@ -12,34 +12,39 @@ class DataLoadingFrame(ctk.CTkFrame):
         super().__init__(master, **kwargs)
         
         self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(1, weight=1)
         
         # Header
         self.header = ctk.CTkLabel(self, text="DATA LOADING 📂", font=FONTS["title"], text_color=COLORS["cyan"])
         self.header.grid(row=0, column=0, pady=(30, 20), sticky="w", padx=40)
         
+        self.content_frame = ctk.CTkScrollableFrame(self, fg_color="transparent")
+        self.content_frame.grid(row=1, column=0, sticky="nsew", padx=10)
+        self.content_frame.grid_columnconfigure(0, weight=1)
+        
         # Upload Button
         self.upload_btn = ctk.CTkButton(
-            self, text="Upload Dataset (.xlsx, .csv)", 
+            self.content_frame, text="Upload Dataset (.xlsx, .csv)", 
             font=FONTS["header"], height=50,
             command=self.browse_file
         )
-        self.upload_btn.grid(row=1, column=0, pady=10, padx=40, sticky="ew")
+        self.upload_btn.grid(row=0, column=0, pady=10, padx=40, sticky="ew")
 
         # Status Label
-        self.status_lbl = ctk.CTkLabel(self, text="No file loaded.", text_color=COLORS["text_dim"])
-        self.status_lbl.grid(row=2, column=0, padx=40, sticky="w")
+        self.status_lbl = ctk.CTkLabel(self.content_frame, text="No file loaded.", text_color=COLORS["text_dim"])
+        self.status_lbl.grid(row=1, column=0, padx=40, sticky="w")
         
         # Data Info Frame
-        self.info_frame = ctk.CTkFrame(self, fg_color=COLORS["bg_card"])
-        self.info_frame.grid(row=3, column=0, pady=20, padx=40, sticky="ew")
+        self.info_frame = ctk.CTkFrame(self.content_frame, fg_color=COLORS["bg_card"])
+        self.info_frame.grid(row=2, column=0, pady=20, padx=40, sticky="ew")
         self.info_frame.grid_columnconfigure(1, weight=1)
         
         self.shape_lbl = ctk.CTkLabel(self.info_frame, text="Rows: 0 | Columns: 0", font=FONTS["body"])
         self.shape_lbl.grid(row=0, column=0, pady=10, padx=20, sticky="w")
         
         # Column Selection Frame
-        self.col_frame = ctk.CTkFrame(self, fg_color=COLORS["bg_card"])
-        self.col_frame.grid(row=4, column=0, pady=10, padx=40, sticky="ew")
+        self.col_frame = ctk.CTkFrame(self.content_frame, fg_color=COLORS["bg_card"])
+        self.col_frame.grid(row=3, column=0, pady=10, padx=40, sticky="ew")
         self.col_frame.grid_columnconfigure(0, weight=1)
         self.col_frame.grid_columnconfigure(1, weight=1)
         
@@ -56,7 +61,7 @@ class DataLoadingFrame(ctk.CTkFrame):
         
         # Proceed Button
         self.proceed_btn = ctk.CTkButton(
-            self, text="Proceed to Preprocessing →",
+            self.content_frame, text="Proceed to Preprocessing →",
             font=FONTS["header"], height=50,
             fg_color=COLORS["primary_dark"],
             hover_color=COLORS["primary"],
@@ -64,7 +69,7 @@ class DataLoadingFrame(ctk.CTkFrame):
             state="disabled",
             command=self.go_to_preprocessing
         )
-        self.proceed_btn.grid(row=5, column=0, pady=30, padx=40, sticky="ew")
+        self.proceed_btn.grid(row=4, column=0, pady=30, padx=40, sticky="ew")
 
     def browse_file(self):
         filename = filedialog.askopenfilename(
