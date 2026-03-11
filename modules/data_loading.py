@@ -104,9 +104,6 @@ def render():
 └─────────────────────────────────────────┘"""
         terminal_block(summary)
 
-        # Clickable proceed button
-        if st.button("✓ READY — Proceed to Preprocessing →", use_container_width=True, type="primary"):
-            st.session_state["nav_page"] = "🔧  Preprocessing"
-            st.rerun()
+        status_badge("✓ READY — Select 'Preprocessing' in the sidebar →", "ready")
     else:
         status_badge("⚠ Select input and output columns", "warning")

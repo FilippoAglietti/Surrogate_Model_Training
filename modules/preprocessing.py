@@ -134,10 +134,7 @@ def render():
 └────────────────────────────────────────┘"""
         terminal_block(summary)
 
-        # Clickable proceed button
-        if st.button("✓ READY — Proceed to Model Builder →", use_container_width=True, type="primary"):
-            st.session_state["nav_page"] = "🏗  Model Builder"
-            st.rerun()
+        status_badge("✓ READY — Select 'Model Builder' in the sidebar →", "ready")
 
         # ── Pair Plot ────────────────────────────────────────
         st.markdown("---")

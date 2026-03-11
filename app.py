@@ -12,7 +12,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-from utils.theme import inject_custom_css, render_ascii_banner, COLORS
+from utils.theme import inject_custom_css, COLORS
 from utils.state import init_all_defaults
 from modules import data_loading, preprocessing, model_builder, hyperopt, training, results
 
@@ -88,7 +88,6 @@ with st.sidebar:
     """, unsafe_allow_html=True)
 
 # ── Main Content ─────────────────────────────────────────────
-render_ascii_banner()
 
 selected = PAGE_MAP[page]
 
