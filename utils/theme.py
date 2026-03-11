@@ -30,10 +30,10 @@ ASCII_BANNER = r"""
 ╚════██║██║   ██║██╔══██╗██╔══██╗██║   ██║██║   ██║██╔══██║   ██║   ██╔══╝  
 ███████║╚██████╔╝██║  ██║██║  ██║╚██████╔╝╚██████╔╝██║  ██║   ██║   ███████╗
 ╚══════╝ ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝  ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚══════╝
-        ⚡  M O D E L   T R A I N I N G   E N G I N E  ⚡
+              ⚡  B U I L D E R  ⚡
 """
 
-ASCII_MINI = "[ ⚡ SURROGATE MODEL TRAINER ⚡ ]"
+ASCII_MINI = "[ ⚡ SURROGATE BUILDER ⚡ ]"
 
 
 def inject_custom_css():
@@ -274,7 +274,7 @@ def inject_custom_css():
 def render_ascii_banner():
     """Render the main ASCII art banner."""
     st.markdown(f'<div class="ascii-banner">{ASCII_BANNER}</div>', unsafe_allow_html=True)
-    st.markdown('<div class="ascii-subtitle">v1.0 — Neural Network Surrogate Modeling</div>', unsafe_allow_html=True)
+    st.markdown('<div class="ascii-subtitle">v1.0 — Neural Network Surrogate Builder</div>', unsafe_allow_html=True)
 
 
 def neon_header(text: str, icon: str = "▸"):

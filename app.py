@@ -1,12 +1,12 @@
 """
-Surrogate Model Training Engine
+Surrogate Builder
 Main Streamlit app entry point.
 """
 import streamlit as st
 
 # Page config MUST be first Streamlit command
 st.set_page_config(
-    page_title="⚡ Surrogate Model Trainer",
+    page_title="⚡ Surrogate Builder",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -20,6 +20,28 @@ from modules import data_loading, preprocessing, model_builder, hyperopt, traini
 init_all_defaults()
 inject_custom_css()
 
+# Navigation keys → radio index mapping
+PAGE_LIST = [
+    "📂  Data Loading",
+    "🔧  Preprocessing",
+    "🏗  Model Builder",
+    "🔍  Hyperopt",
+    "🚀  Training",
+    "📊  Results",
+]
+PAGE_MAP = {
+    "📂  Data Loading": "data_loading",
+    "🔧  Preprocessing": "preprocessing",
+    "🏗  Model Builder": "model_builder",
+    "🔍  Hyperopt": "hyperopt",
+    "🚀  Training": "training",
+    "📊  Results": "results",
+}
+
+# Support programmatic navigation via session state
+if "nav_target" not in st.session_state:
+    st.session_state["nav_target"] = PAGE_LIST[0]
+
 # ── Sidebar Navigation ──────────────────────────────────────
 with st.sidebar:
     st.markdown(f"""
@@ -27,7 +49,7 @@ with st.sidebar:
         <span style="color:{COLORS['green']}; font-size:1.5rem; font-weight:700;">⚡</span>
         <br>
         <span style="color:{COLORS['cyan']}; font-size:0.75rem; letter-spacing:3px;">
-            SURROGATE<br>TRAINER
+            SURROGATE<br>BUILDER
         </span>
     </div>
     """, unsafe_allow_html=True)
@@ -35,20 +57,18 @@ with st.sidebar:
     st.markdown("---")
 
     # Navigation
-    pages = {
-        "📂  Data Loading": "data_loading",
-        "🔧  Preprocessing": "preprocessing",
-        "🏗  Model Builder": "model_builder",
-        "🔍  Hyperopt": "hyperopt",
-        "🚀  Training": "training",
-        "📊  Results": "results",
-    }
+    default_idx = PAGE_LIST.index(st.session_state["nav_target"]) if st.session_state["nav_target"] in PAGE_LIST else 0
 
     page = st.radio(
         "MODULES",
-        list(pages.keys()),
-        label_visibility="collapsed"
+        PAGE_LIST,
+        index=default_idx,
+        label_visibility="collapsed",
+        key="nav_radio"
     )
+
+    # Keep nav_target in sync with radio
+    st.session_state["nav_target"] = page
 
     st.markdown("---")
 
@@ -82,7 +102,7 @@ with st.sidebar:
 render_ascii_banner()
 
 # Route to selected module
-selected = pages[page]
+selected = PAGE_MAP[page]
 
 if selected == "data_loading":
     data_loading.render()

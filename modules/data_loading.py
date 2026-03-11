@@ -4,7 +4,7 @@ Upload Excel/CSV files, select input/output columns, preview data.
 """
 import streamlit as st
 import pandas as pd
-from utils.theme import neon_header, neon_card, terminal_block, status_badge, COLORS
+from utils.theme import neon_header, terminal_block, status_badge, COLORS
 from utils.state import set_state, get_state
 
 
@@ -12,14 +12,6 @@ def render():
     neon_header("DATA LOADING", "📂")
 
     # ── File Upload ──────────────────────────────────────────
-    st.markdown(f"""
-    <div class="neon-card">
-        <span style="color:{COLORS['cyan']}; font-weight:600;">
-            ▸ Upload your dataset (.xlsx, .xls, .csv)
-        </span>
-    </div>
-    """, unsafe_allow_html=True)
-
     uploaded = st.file_uploader(
         "Drop file here",
         type=["xlsx", "xls", "csv"],
@@ -112,6 +104,9 @@ def render():
 └─────────────────────────────────────────┘"""
         terminal_block(summary)
 
-        status_badge("✓ READY — Proceed to Preprocessing →", "ready")
+        # Clickable proceed button
+        if st.button("✓ READY — Proceed to Preprocessing →", use_container_width=True, type="primary"):
+            st.session_state["nav_target"] = "🔧  Preprocessing"
+            st.rerun()
     else:
         status_badge("⚠ Select input and output columns", "warning")
