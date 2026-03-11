@@ -4,59 +4,58 @@ Grid search, Random search, Optuna (TPE) with live progress.
 """
 import streamlit as st
 import numpy as np
-import torch
-import torch.nn as nn
-from torch.utils.data import TensorDataset, DataLoader
+import tensorflow as tf
+from tensorflow.keras.callbacks import EarlyStopping
 import optuna
 import itertools
 import random as rand_module
 
-from modules.model_builder import SurrogateNet, ACTIVATIONS
+from modules.model_builder import build_surrogate_model
 from utils.theme import neon_header, terminal_block, status_badge, COLORS
 from utils.state import get_state, set_state
-
 
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 
 
-def _train_eval(model, X_train, y_train, X_val, y_val, lr, batch_size, epochs, loss_name):
-    """Quick train + eval for HPO trial. Returns best val loss."""
-    loss_map = {
-        "MSELoss": nn.MSELoss,
-        "L1Loss (MAE)": nn.L1Loss,
-        "HuberLoss": nn.HuberLoss,
-        "SmoothL1Loss": nn.SmoothL1Loss,
+def get_keras_loss(name):
+    losses = {
+        "MeanSquaredError": tf.keras.losses.MeanSquaredError(),
+        "MeanAbsoluteError": tf.keras.losses.MeanAbsoluteError(),
+        "Huber": tf.keras.losses.Huber(),
+        "LogCosh": tf.keras.losses.LogCosh(),
     }
-    criterion = loss_map.get(loss_name, nn.MSELoss)()
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    return losses.get(name, tf.keras.losses.MeanSquaredError())
 
-    dataset = TensorDataset(X_train, y_train)
-    loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+def get_keras_optimizer(name, lr):
+    optimizers = {
+        "Adam": tf.keras.optimizers.Adam(learning_rate=lr),
+        "AdamW": tf.keras.optimizers.AdamW(learning_rate=lr) if hasattr(tf.keras.optimizers, 'AdamW') else tf.keras.optimizers.Adam(learning_rate=lr),
+        "SGD": tf.keras.optimizers.SGD(learning_rate=lr),
+        "RMSprop": tf.keras.optimizers.RMSprop(learning_rate=lr),
+    }
+    return optimizers.get(name, tf.keras.optimizers.Adam(learning_rate=lr))
 
-    best_val = float("inf")
-    patience, patience_counter = 15, 0
-
-    for _ in range(epochs):
-        model.train()
-        for xb, yb in loader:
-            optimizer.zero_grad()
-            loss = criterion(model(xb), yb)
-            loss.backward()
-            optimizer.step()
-
-        model.eval()
-        with torch.no_grad():
-            val_loss = criterion(model(X_val), y_val).item()
-
-        if val_loss < best_val:
-            best_val = val_loss
-            patience_counter = 0
-        else:
-            patience_counter += 1
-            if patience_counter >= patience:
-                break
-
-    return best_val
+def _train_eval(input_dim, layers_cfg, X_train, y_train, X_val, y_val, lr, batch_size, epochs, loss_name):
+    """Quick train + eval for HPO trial. Returns best val loss."""
+    model = build_surrogate_model(input_dim, 1, layers_cfg)
+    
+    criterion = get_keras_loss(loss_name)
+    optimizer = get_keras_optimizer("Adam", lr) # Default to Adam for HPO if not specified
+    
+    model.compile(optimizer=optimizer, loss=criterion)
+    
+    early_stop = EarlyStopping(monitor='val_loss', patience=15, restore_best_weights=True)
+    
+    history = model.fit(
+        X_train, y_train,
+        validation_data=(X_val, y_val),
+        epochs=epochs,
+        batch_size=batch_size,
+        callbacks=[early_stop],
+        verbose=0
+    )
+    
+    return min(history.history['val_loss'])
 
 
 def render():
@@ -70,6 +69,10 @@ def render():
     y_train = get_state("y_train")
     X_val = get_state("X_val")
     y_val = get_state("y_val")
+    
+    if X_train is None:
+        return
+        
     input_dim = X_train.shape[1]
 
     # ── Strategy Selection ───────────────────────────────────
@@ -81,6 +84,9 @@ def render():
 
     # ── Search Space ─────────────────────────────────────────
     neon_header("SEARCH SPACE", "📐")
+
+    # Re-use activation list
+    ACTIVATION_NAMES = ["ReLU", "LeakyReLU", "ELU", "SELU", "Tanh", "Sigmoid", "GELU", "SiLU (Swish)"]
 
     col1, col2 = st.columns(2)
     with col1:
@@ -98,7 +104,7 @@ def render():
     if not batch_options:
         batch_options = [64]
 
-    loss_name = st.selectbox("Loss for HPO", ["MSELoss", "L1Loss (MAE)", "HuberLoss", "SmoothL1Loss"])
+    loss_name = st.selectbox("Loss for HPO", ["MeanSquaredError", "MeanAbsoluteError", "Huber", "LogCosh"])
     hpo_epochs = st.number_input("Epochs per trial", 10, 500, 50, 10)
     n_trials = st.number_input("Number of trials", 3, 200, 20, 1)
 
@@ -121,14 +127,13 @@ def render():
                 for i in range(n_layers):
                     u = trial.suggest_int(f"units_{i}", int(units_min), int(units_max), step=8)
                     d = trial.suggest_float(f"dropout_{i}", dropout_min, dropout_max, step=0.05)
-                    act = trial.suggest_categorical(f"act_{i}", list(ACTIVATIONS.keys()))
+                    act = trial.suggest_categorical(f"act_{i}", ACTIVATION_NAMES)
                     layers_cfg.append({"units": u, "activation": act, "dropout": d})
 
                 lr = trial.suggest_float("lr", lr_min, lr_max, log=True)
                 bs = trial.suggest_categorical("batch_size", batch_options)
 
-                model = SurrogateNet(input_dim, 1, layers_cfg)
-                val_loss = _train_eval(model, X_train, y_train, X_val, y_val,
+                val_loss = _train_eval(input_dim, layers_cfg, X_train, y_train, X_val, y_val,
                                        lr, bs, int(hpo_epochs), loss_name)
                 return val_loss
 
@@ -158,14 +163,13 @@ def render():
                 for _ in range(n_layers):
                     layers_cfg.append({
                         "units": rand_module.choice(range(int(units_min), int(units_max) + 1, 8)),
-                        "activation": rand_module.choice(list(ACTIVATIONS.keys())),
+                        "activation": rand_module.choice(ACTIVATION_NAMES),
                         "dropout": round(rand_module.uniform(dropout_min, dropout_max), 2)
                     })
                 lr = 10 ** rand_module.uniform(np.log10(lr_min), np.log10(lr_max))
                 bs = rand_module.choice(batch_options)
 
-                model = SurrogateNet(input_dim, 1, layers_cfg)
-                val_loss = _train_eval(model, X_train, y_train, X_val, y_val,
+                val_loss = _train_eval(input_dim, layers_cfg, X_train, y_train, X_val, y_val,
                                        lr, bs, int(hpo_epochs), loss_name)
 
                 if val_loss < best_val_loss:
@@ -197,8 +201,7 @@ def render():
 
             for i, (nl, nu, lr_v, bs) in enumerate(grid):
                 layers_cfg = [{"units": nu, "activation": "ReLU", "dropout": 0.1}] * nl
-                model = SurrogateNet(input_dim, 1, layers_cfg)
-                val_loss = _train_eval(model, X_train, y_train, X_val, y_val,
+                val_loss = _train_eval(input_dim, layers_cfg, X_train, y_train, X_val, y_val,
                                        lr_v, bs, int(hpo_epochs), loss_name)
 
                 if val_loss < best_val_loss:

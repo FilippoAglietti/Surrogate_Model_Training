@@ -3,46 +3,59 @@ Module 3 — Model Builder
 Configure NN architecture: layers, activations, dropout, loss, optimizer.
 """
 import streamlit as st
-import torch
-import torch.nn as nn
-from utils.theme import neon_header, terminal_block, status_badge, COLORS
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, Dropout, Activation, LeakyReLU, ELU
+
+from utils.theme import neon_header, terminal_block, status_badge
 from utils.state import get_state, set_state
 
 
 # ── Activation Map ───────────────────────────────────────────
-ACTIVATIONS = {
-    "ReLU": nn.ReLU,
-    "LeakyReLU": nn.LeakyReLU,
-    "ELU": nn.ELU,
-    "SELU": nn.SELU,
-    "Tanh": nn.Tanh,
-    "Sigmoid": nn.Sigmoid,
-    "GELU": nn.GELU,
-    "SiLU (Swish)": nn.SiLU,
-}
+def get_keras_activation(name: str):
+    if name == "LeakyReLU":
+        return LeakyReLU()
+    elif name == "ELU":
+        return ELU()
+    # Keras strings for the rest
+    mapping = {
+        "ReLU": "relu",
+        "SELU": "selu",
+        "Tanh": "tanh",
+        "Sigmoid": "sigmoid",
+        "GELU": "gelu",
+        "SiLU (Swish)": "swish",
+    }
+    return mapping.get(name, "relu")
 
-
-class SurrogateNet(nn.Module):
+def build_surrogate_model(input_dim: int, output_dim: int, layers_config: list) -> Sequential:
     """Dynamically-built feedforward neural network."""
-
-    def __init__(self, input_dim: int, output_dim: int, layers_config: list):
-        super().__init__()
-        modules = []
-        in_features = input_dim
-
-        for layer in layers_config:
-            modules.append(nn.Linear(in_features, layer["units"]))
-            act_cls = ACTIVATIONS.get(layer["activation"], nn.ReLU)
-            modules.append(act_cls())
-            if layer["dropout"] > 0:
-                modules.append(nn.Dropout(layer["dropout"]))
-            in_features = layer["units"]
-
-        modules.append(nn.Linear(in_features, output_dim))
-        self.network = nn.Sequential(*modules)
-
-    def forward(self, x):
-        return self.network(x)
+    model = Sequential()
+    
+    # First layer needs input_shape
+    first_layer_added = False
+    
+    for layer in layers_config:
+        if not first_layer_added:
+            model.add(Dense(layer["units"], input_shape=(input_dim,)))
+            first_layer_added = True
+        else:
+            model.add(Dense(layer["units"]))
+            
+        # Add activation
+        act = get_keras_activation(layer["activation"])
+        if isinstance(act, str):
+            model.add(Activation(act))
+        else:
+            model.add(act)
+            
+        # Add dropout
+        if layer["dropout"] > 0:
+            model.add(Dropout(layer["dropout"]))
+            
+    # Output layer
+    model.add(Dense(output_dim))
+    return model
 
 
 def render():
@@ -53,6 +66,9 @@ def render():
         return
 
     X_train = get_state("X_train")
+    if X_train is None:
+        return
+        
     input_dim = X_train.shape[1]
 
     # ── Layer Configuration ──────────────────────────────────
@@ -76,6 +92,8 @@ def render():
 
     st.markdown("---")
 
+    ACTIVATION_NAMES = ["ReLU", "LeakyReLU", "ELU", "SELU", "Tanh", "Sigmoid", "GELU", "SiLU (Swish)"]
+
     # Configure each layer
     for i, layer in enumerate(layers_config):
         with st.expander(f"Layer {i + 1}", expanded=True):
@@ -86,10 +104,9 @@ def render():
                     key=f"units_{i}"
                 )
             with c2:
-                act_options = list(ACTIVATIONS.keys())
-                default_idx = act_options.index(layer["activation"]) if layer["activation"] in act_options else 0
+                default_idx = ACTIVATION_NAMES.index(layer["activation"]) if layer["activation"] in ACTIVATION_NAMES else 0
                 layer["activation"] = st.selectbox(
-                    "Activation", act_options, default_idx,
+                    "Activation", ACTIVATION_NAMES, default_idx,
                     key=f"act_{i}"
                 )
             with c3:
@@ -107,7 +124,7 @@ def render():
     col_l, col_o = st.columns(2)
     with col_l:
         loss_name = st.selectbox("Loss Function", [
-            "MSELoss", "L1Loss (MAE)", "HuberLoss", "SmoothL1Loss"
+            "MeanSquaredError", "MeanAbsoluteError", "Huber", "LogCosh"
         ])
     with col_o:
         optim_name = st.selectbox("Optimizer", [
@@ -126,8 +143,9 @@ def render():
     st.markdown("---")
 
     if st.button("⚡  BUILD MODEL", use_container_width=True, type="primary"):
-        model = SurrogateNet(input_dim, 1, layers_config)
-
+        # We don't save the actual Keras backend model here to avoid session state serialization issues with Keras 3/TF 2.15
+        # Instead, we just save the config. We will build and compile it in Training/Hyperopt.
+        
         model_config = {
             "layers": layers_config,
             "loss": loss_name,
@@ -138,18 +156,22 @@ def render():
             "input_dim": input_dim,
         }
 
-        set_state("model", model)
+        # Tell downstream we have a config ready to build
+        set_state("model_ready", True)
         set_state("model_config", model_config)
         set_state("trained", False)
+        
+        # Build temporarily just to count params
+        temp_model = build_surrogate_model(input_dim, 1, layers_config)
+        set_state("model_params_count", temp_model.count_params())
+        
         st.rerun()
 
     # ── Architecture Summary ─────────────────────────────────
-    model = get_state("model")
     config = get_state("model_config")
 
-    if model is not None and config is not None:
-        total_params = sum(p.numel() for p in model.parameters())
-        trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    if get_state("model_ready") and config is not None:
+        total_params = get_state("model_params_count", 0)
 
         arch_text = f"""┌──────────────────────────────────────────┐
 │  NEURAL NETWORK ARCHITECTURE             │
@@ -172,8 +194,7 @@ def render():
         arch_text += f"""
 ├──────────────────────────────────────────┤
 │  Total params    : {total_params:<21}│
-│  Trainable params: {trainable:<21}│
 └──────────────────────────────────────────┘"""
 
         terminal_block(arch_text)
-        status_badge("✓ Model built — Proceed to Training or Hyperopt →", "ready")
+        status_badge("✓ Model configured — Proceed to Training or Hyperopt →", "ready")

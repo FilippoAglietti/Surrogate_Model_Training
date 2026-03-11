@@ -5,12 +5,11 @@ Predicted vs Actual, residuals, feature importance, metrics, export.
 import streamlit as st
 import numpy as np
 import pandas as pd
-import torch
+import tensorflow as tf
 import plotly.graph_objects as go
-import plotly.express as px
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 import io
-import copy
+import os
 
 from utils.theme import neon_header, terminal_block, status_badge, COLORS
 from utils.state import get_state
@@ -31,10 +30,8 @@ def render():
     output_col = get_state("output_column")
 
     # ── Predictions ──────────────────────────────────────────
-    model.eval()
-    with torch.no_grad():
-        y_pred = model(X_test).numpy()
-    y_true = y_test.numpy()
+    y_pred = model.predict(X_test, verbose=0)
+    y_true = y_test
 
     # Inverse transform if scaled
     if scaler_y is not None:
@@ -144,19 +141,21 @@ def render():
         neon_header("PERMUTATION IMPORTANCE", "🔑")
 
         if st.button("⚡  Compute Feature Importance", use_container_width=True):
-            X_test_np = X_test.numpy().copy()
+            X_test_np = X_test.copy()
             baseline_mse = mean_squared_error(y_t, y_p)
             importances = []
 
             for i, col_name in enumerate(input_cols):
                 X_perm = X_test_np.copy()
                 np.random.shuffle(X_perm[:, i])
-                with torch.no_grad():
-                    y_perm = model(torch.tensor(X_perm, dtype=torch.float32)).numpy()
+                
+                y_perm = model.predict(X_perm, verbose=0)
+                
                 if scaler_y is not None:
                     y_perm = scaler_y.inverse_transform(y_perm).flatten()
                 else:
                     y_perm = y_perm.flatten()
+                    
                 perm_mse = mean_squared_error(y_t, y_perm)
                 importances.append(perm_mse - baseline_mse)
 
@@ -236,20 +235,19 @@ def render():
 
         # Model download
         with col_dl3:
-            model_buffer = io.BytesIO()
-            torch.save({
-                'model_state_dict': model.state_dict(),
-                'model_config': get_state("model_config"),
-                'input_columns': input_cols,
-                'output_column': output_col,
-                'scaler_X': get_state("scaler_X"),
-                'scaler_y': scaler_y,
-            }, model_buffer)
+            # Keras requires saving to disk to get bytes easily
+            temp_path = "temp_model.h5"
+            model.save(temp_path)
+            
+            with open(temp_path, "rb") as f:
+                model_bytes = f.read()
+                
+            os.remove(temp_path)
 
             st.download_button(
-                "🧠 Download Model (.pt)",
-                model_buffer.getvalue(),
-                "surrogate_model.pt",
+                "🧠 Download Model (.h5)",
+                model_bytes,
+                "surrogate_model.h5",
                 "application/octet-stream",
                 use_container_width=True
             )

@@ -81,7 +81,7 @@ with st.sidebar:
     st.markdown(f"""
     <div style="text-align:center;">
         <span style="color:{COLORS['text_dim']}; font-size:0.65rem;">
-            v1.0 · PyTorch · Optuna<br>
+            v1.0 · TensorFlow · Optuna<br>
             Built with ⚡ by Antigravity
         </span>
     </div>

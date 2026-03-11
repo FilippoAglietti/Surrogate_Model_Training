@@ -8,7 +8,6 @@ import pandas as pd
 import plotly.graph_objects as go
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
-import torch
 
 from utils.theme import neon_header, terminal_block, status_badge, COLORS
 from utils.state import get_state, set_state
@@ -98,13 +97,13 @@ def render():
             X_temp, y_temp, test_size=relative_val, random_state=42
         )
 
-        # Convert to tensors
-        set_state("X_train", torch.tensor(X_train, dtype=torch.float32))
-        set_state("X_val", torch.tensor(X_val, dtype=torch.float32))
-        set_state("X_test", torch.tensor(X_test, dtype=torch.float32))
-        set_state("y_train", torch.tensor(y_train, dtype=torch.float32))
-        set_state("y_val", torch.tensor(y_val, dtype=torch.float32))
-        set_state("y_test", torch.tensor(y_test, dtype=torch.float32))
+        # Save NumPy arrays directly for TensorFlow
+        set_state("X_train", X_train)
+        set_state("X_val", X_val)
+        set_state("X_test", X_test)
+        set_state("y_train", y_train)
+        set_state("y_val", y_val)
+        set_state("y_test", y_test)
         set_state("scaler_X", scaler_X)
         set_state("scaler_y", scaler_y)
         set_state("preprocessed", True)
@@ -141,8 +140,8 @@ def render():
         neon_header("PAIR PLOT", "📊")
 
         # Build a dataframe from training data for the pair plot
-        X_tr_np = X_tr.numpy()
-        y_tr_np = get_state("y_train").numpy().flatten()
+        X_tr_np = X_tr
+        y_tr_np = get_state("y_train").flatten()
 
         plot_df = pd.DataFrame(X_tr_np, columns=input_cols)
         plot_df[output_col] = y_tr_np

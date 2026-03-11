@@ -4,25 +4,98 @@ Training loop with real-time loss curves, metrics, early stopping.
 """
 import streamlit as st
 import numpy as np
-import torch
-import torch.nn as nn
-from torch.utils.data import TensorDataset, DataLoader
+import tensorflow as tf
+from tensorflow.keras.callbacks import Callback, EarlyStopping
 import plotly.graph_objects as go
 import time
-import copy
 
+from modules.model_builder import build_surrogate_model
+from modules.hyperopt import get_keras_loss, get_keras_optimizer
 from utils.theme import neon_header, terminal_block, status_badge, COLORS
 from utils.state import get_state, set_state
+
+
+class StreamlitUpdateCallback(Callback):
+    """Custom Keras callback to update Streamlit UI during training."""
+    def __init__(self, epochs, X_val, y_val, ui_elements):
+        super().__init__()
+        self.epochs = epochs
+        self.X_val = X_val
+        self.y_val = y_val
+        self.epoch_metric = ui_elements['epoch']
+        self.tloss_metric = ui_elements['tloss']
+        self.vloss_metric = ui_elements['vloss']
+        self.status_metric = ui_elements['status']
+        self.progress = ui_elements['progress']
+        self.chart_placeholder = ui_elements['chart']
+        self.log_placeholder = ui_elements['log']
+        
+        self.train_losses = []
+        self.val_losses = []
+        self.log_lines = []
+
+    def on_epoch_end(self, epoch, logs=None):
+        logs = logs or {}
+        val_loss = logs.get('val_loss', 0.0)
+        train_loss = logs.get('loss', 0.0)
+        
+        self.train_losses.append(train_loss)
+        self.val_losses.append(val_loss)
+
+        # Compute R² manually for Streamlit update
+        val_pred = self.model.predict(self.X_val, verbose=0).flatten()
+        y_val_flat = self.y_val.flatten()
+        ss_res = np.sum((y_val_flat - val_pred) ** 2)
+        ss_tot = np.sum((y_val_flat - np.mean(y_val_flat)) ** 2)
+        r2 = 1 - (ss_res / ss_tot) if ss_tot > 0 else 0
+
+        pct = (epoch + 1) / self.epochs
+        self.progress.progress(pct)
+        self.epoch_metric.metric("Epoch", f"{epoch + 1}/{self.epochs}")
+        self.tloss_metric.metric("Train Loss", f"{train_loss:.6f}")
+        self.vloss_metric.metric("Val Loss", f"{val_loss:.6f}")
+        self.status_metric.metric("R²", f"{r2:.4f}")
+
+        line = f"[{epoch+1:>5}/{self.epochs}] train={train_loss:.6f}  val={val_loss:.6f}  R²={r2:.4f}"
+        self.log_lines.append(line)
+
+        # Update chart every 5 epochs or last epoch
+        if (epoch + 1) % 5 == 0 or epoch == self.epochs - 1:
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                y=self.train_losses, mode="lines", name="Train Loss",
+                line=dict(color=COLORS['cyan'], width=2)
+            ))
+            fig.add_trace(go.Scatter(
+                y=self.val_losses, mode="lines", name="Val Loss",
+                line=dict(color=COLORS['orange'], width=2)
+            ))
+            fig.update_layout(
+                template="plotly_dark",
+                paper_bgcolor=COLORS['bg'],
+                plot_bgcolor=COLORS['bg_card'],
+                title="Loss Curves",
+                xaxis_title="Epoch", yaxis_title="Loss",
+                height=350,
+                font=dict(family="JetBrains Mono, monospace", color=COLORS['text']),
+                legend=dict(x=0.7, y=0.95)
+            )
+            self.chart_placeholder.plotly_chart(fig, use_container_width=True)
+
+            visible_log = "\n".join(self.log_lines[-15:])
+            self.log_placeholder.markdown(
+                f'<div class="terminal-output">{visible_log}</div>',
+                unsafe_allow_html=True
+            )
 
 
 def render():
     neon_header("TRAINING DASHBOARD", "🚀")
 
-    model = get_state("model")
     config = get_state("model_config")
 
-    if model is None or config is None:
-        terminal_block("[ BLOCKED ] Build a model first.\n\n  ← Go to 'Model Builder'")
+    if not get_state("model_ready") or config is None:
+        terminal_block("[ BLOCKED ] Configure a model first.\n\n  ← Go to 'Model Builder'")
         return
 
     if not get_state("preprocessed"):
@@ -48,34 +121,15 @@ def render():
     st.markdown("---")
 
     if st.button("⚡  START TRAINING", use_container_width=True, type="primary"):
-        # Loss & optimizer setup
-        loss_map = {
-            "MSELoss": nn.MSELoss,
-            "L1Loss (MAE)": nn.L1Loss,
-            "HuberLoss": nn.HuberLoss,
-            "SmoothL1Loss": nn.SmoothL1Loss,
-        }
-        criterion = loss_map.get(config["loss"], nn.MSELoss)()
-
-        optim_map = {
-            "Adam": torch.optim.Adam,
-            "AdamW": torch.optim.AdamW,
-            "SGD": torch.optim.SGD,
-            "RMSprop": torch.optim.RMSprop,
-        }
-        optimizer = optim_map.get(config["optimizer"], torch.optim.Adam)(
-            model.parameters(), lr=config["lr"]
-        )
-
-        dataset = TensorDataset(X_train, y_train)
-        loader = DataLoader(dataset, batch_size=config["batch_size"], shuffle=True)
+        # Build completely fresh model
+        model = build_surrogate_model(config["input_dim"], 1, config["layers"])
+        
+        criterion = get_keras_loss(config["loss"])
+        optimizer = get_keras_optimizer(config["optimizer"], config["lr"])
+        
+        model.compile(optimizer=optimizer, loss=criterion)
 
         epochs = config["epochs"]
-        train_losses = []
-        val_losses = []
-        best_val_loss = float("inf")
-        best_state = None
-        patience_counter = 0
 
         # UI placeholders
         progress = st.progress(0)
@@ -88,118 +142,75 @@ def render():
         chart_placeholder = st.empty()
         log_placeholder = st.empty()
 
-        log_lines = []
+        st_callback = StreamlitUpdateCallback(epochs, X_val, y_val, {
+            'epoch': epoch_metric,
+            'tloss': tloss_metric,
+            'vloss': vloss_metric,
+            'status': status_metric,
+            'progress': progress,
+            'chart': chart_placeholder,
+            'log': log_placeholder
+        })
+
+        callbacks = [st_callback]
+        
+        if use_es:
+            es = EarlyStopping(
+                monitor='val_loss',
+                patience=int(patience),
+                min_delta=float(min_delta),
+                restore_best_weights=True,
+                verbose=1
+            )
+            callbacks.append(es)
+
         start_time = time.time()
 
-        for epoch in range(epochs):
-            # ── Train ────────────────────────────────────
-            model.train()
-            epoch_loss = 0.0
-            n_batches = 0
-            for xb, yb in loader:
-                optimizer.zero_grad()
-                pred = model(xb)
-                loss = criterion(pred, yb)
-                loss.backward()
-                optimizer.step()
-                epoch_loss += loss.item()
-                n_batches += 1
-
-            avg_train = epoch_loss / n_batches
-
-            # ── Validate ─────────────────────────────────
-            model.eval()
-            with torch.no_grad():
-                val_pred = model(X_val)
-                val_loss = criterion(val_pred, y_val).item()
-
-                # R² score
-                ss_res = ((y_val - val_pred) ** 2).sum().item()
-                ss_tot = ((y_val - y_val.mean()) ** 2).sum().item()
-                r2 = 1 - (ss_res / ss_tot) if ss_tot > 0 else 0
-
-            train_losses.append(avg_train)
-            val_losses.append(val_loss)
-
-            # ── Early Stopping ───────────────────────────
-            improved = False
-            if val_loss < best_val_loss - min_delta:
-                best_val_loss = val_loss
-                best_state = copy.deepcopy(model.state_dict())
-                patience_counter = 0
-                improved = True
-            else:
-                patience_counter += 1
-
-            # ── Update UI ────────────────────────────────
-            pct = (epoch + 1) / epochs
-            progress.progress(pct)
-            epoch_metric.metric("Epoch", f"{epoch + 1}/{epochs}")
-            tloss_metric.metric("Train Loss", f"{avg_train:.6f}")
-            vloss_metric.metric("Val Loss", f"{val_loss:.6f}")
-            status_metric.metric("R²", f"{r2:.4f}")
-
-            line = f"[{epoch+1:>5}/{epochs}] train={avg_train:.6f}  val={val_loss:.6f}  R²={r2:.4f}"
-            if improved:
-                line += "  ★ best"
-            log_lines.append(line)
-
-            # Update chart every 5 epochs or last epoch
-            if (epoch + 1) % 5 == 0 or epoch == epochs - 1 or (use_es and patience_counter >= patience):
-                fig = go.Figure()
-                fig.add_trace(go.Scatter(
-                    y=train_losses, mode="lines", name="Train Loss",
-                    line=dict(color=COLORS['cyan'], width=2)
-                ))
-                fig.add_trace(go.Scatter(
-                    y=val_losses, mode="lines", name="Val Loss",
-                    line=dict(color=COLORS['orange'], width=2)
-                ))
-                fig.update_layout(
-                    template="plotly_dark",
-                    paper_bgcolor=COLORS['bg'],
-                    plot_bgcolor=COLORS['bg_card'],
-                    title="Loss Curves",
-                    xaxis_title="Epoch", yaxis_title="Loss",
-                    height=350,
-                    font=dict(family="JetBrains Mono, monospace", color=COLORS['text']),
-                    legend=dict(x=0.7, y=0.95)
-                )
-                chart_placeholder.plotly_chart(fig, use_container_width=True)
-
-                # Show last 15 log lines
-                visible_log = "\n".join(log_lines[-15:])
-                log_placeholder.markdown(
-                    f'<div class="terminal-output">{visible_log}</div>',
-                    unsafe_allow_html=True
-                )
-
-            # Check early stopping
-            if use_es and patience_counter >= patience:
-                log_lines.append(f"\n⚠ Early stopping at epoch {epoch+1} (patience={patience})")
-                break
+        # Run Keras fit
+        history = model.fit(
+            X_train, y_train,
+            validation_data=(X_val, y_val),
+            epochs=epochs,
+            batch_size=config["batch_size"],
+            callbacks=callbacks,
+            verbose=0
+        )
 
         elapsed = time.time() - start_time
+        
+        train_losses = st_callback.train_losses
+        val_losses = st_callback.val_losses
+        best_val_loss = min(val_losses) if val_losses else float('inf')
 
-        # Restore best model
-        if best_state is not None:
-            model.load_state_dict(best_state)
+        # Final R2 evaluation with best weights
+        val_pred = model.predict(X_val, verbose=0).flatten()
+        y_val_flat = y_val.flatten()
+        ss_res = np.sum((y_val_flat - val_pred) ** 2)
+        ss_tot = np.sum((y_val_flat - np.mean(y_val_flat)) ** 2)
+        r2 = 1 - (ss_res / ss_tot) if ss_tot > 0 else 0
 
         # Save state
-        set_state("model", model)
+        set_state("model", model)  # Now we save the instantiated, trained model
         set_state("trained", True)
         set_state("train_losses", train_losses)
         set_state("val_losses", val_losses)
-        set_state("best_model_state", best_state)
         set_state("training_metrics", {
             "best_val_loss": best_val_loss,
-            "final_train_loss": train_losses[-1],
+            "final_train_loss": train_losses[-1] if train_losses else 0,
             "r2": r2,
             "epochs_run": len(train_losses),
             "elapsed_seconds": elapsed
         })
 
         progress.progress(1.0)
+        
+        if use_es and len(train_losses) < epochs:
+            st_callback.log_lines.append(f"\n⚠ Early stopping triggered at epoch {len(train_losses)}")
+            visible_log = "\n".join(st_callback.log_lines[-15:])
+            log_placeholder.markdown(
+                f'<div class="terminal-output">{visible_log}</div>',
+                unsafe_allow_html=True
+            )
 
         summary = f"""
 ┌──────────────────────────────────────────┐
