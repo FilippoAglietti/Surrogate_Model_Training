@@ -5,7 +5,6 @@ Normalization, train/val/test split, pair plot visualization.
 import streamlit as st
 import numpy as np
 import pandas as pd
-import plotly.express as px
 import plotly.graph_objects as go
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
@@ -137,7 +136,7 @@ def render():
 
         # Clickable proceed button
         if st.button("✓ READY — Proceed to Model Builder →", use_container_width=True, type="primary"):
-            st.session_state["nav_target"] = "🏗  Model Builder"
+            st.session_state["nav_page"] = "🏗  Model Builder"
             st.rerun()
 
         # ── Pair Plot ────────────────────────────────────────
@@ -155,23 +154,32 @@ def render():
         plot_cols = all_cols[:6]
         plot_subset = plot_df[plot_cols] if len(plot_cols) <= len(plot_df.columns) else plot_df
 
-        fig = px.scatter_matrix(
-            plot_subset,
-            dimensions=plot_cols,
-            color=output_col if output_col in plot_cols else None,
-            color_continuous_scale=["#00e5ff", "#ff00ff"],
-            opacity=0.5,
-        )
+        # Build Splom (scatter plot matrix) with histogram on diagonal
+        dimensions = []
+        for col in plot_cols:
+            dimensions.append(dict(label=col, values=plot_subset[col]))
+
+        fig = go.Figure(data=go.Splom(
+            dimensions=dimensions,
+            marker=dict(
+                size=3,
+                color=plot_subset[output_col],
+                colorscale=[[0, '#00e5ff'], [0.5, '#ff00ff'], [1, '#ffd600']],
+                showscale=True,
+                colorbar=dict(title=output_col, thickness=12, len=0.5),
+                opacity=0.5,
+                line=dict(width=0),
+            ),
+            diagonal=dict(visible=True),
+            showupperhalf=False,
+        ))
         fig.update_layout(
             template="plotly_dark",
             paper_bgcolor=COLORS['bg'],
             plot_bgcolor=COLORS['bg_card'],
-            height=max(500, len(plot_cols) * 120),
+            height=max(550, len(plot_cols) * 130),
             font=dict(family="JetBrains Mono, monospace", size=9, color=COLORS['text']),
-            margin=dict(l=40, r=20, t=30, b=20),
-        )
-        fig.update_traces(
-            diagonal_visible=True,
-            marker=dict(size=3),
+            margin=dict(l=60, r=20, t=30, b=40),
+            dragmode='select',
         )
         st.plotly_chart(fig, use_container_width=True)

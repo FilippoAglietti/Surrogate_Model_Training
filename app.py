@@ -20,7 +20,7 @@ from modules import data_loading, preprocessing, model_builder, hyperopt, traini
 init_all_defaults()
 inject_custom_css()
 
-# Navigation keys → radio index mapping
+# Navigation page list
 PAGE_LIST = [
     "📂  Data Loading",
     "🔧  Preprocessing",
@@ -38,10 +38,6 @@ PAGE_MAP = {
     "📊  Results": "results",
 }
 
-# Support programmatic navigation via session state
-if "nav_target" not in st.session_state:
-    st.session_state["nav_target"] = PAGE_LIST[0]
-
 # ── Sidebar Navigation ──────────────────────────────────────
 with st.sidebar:
     st.markdown(f"""
@@ -56,19 +52,12 @@ with st.sidebar:
 
     st.markdown("---")
 
-    # Navigation
-    default_idx = PAGE_LIST.index(st.session_state["nav_target"]) if st.session_state["nav_target"] in PAGE_LIST else 0
-
     page = st.radio(
         "MODULES",
         PAGE_LIST,
-        index=default_idx,
         label_visibility="collapsed",
-        key="nav_radio"
+        key="nav_page"
     )
-
-    # Keep nav_target in sync with radio
-    st.session_state["nav_target"] = page
 
     st.markdown("---")
 
@@ -101,7 +90,6 @@ with st.sidebar:
 # ── Main Content ─────────────────────────────────────────────
 render_ascii_banner()
 
-# Route to selected module
 selected = PAGE_MAP[page]
 
 if selected == "data_loading":
