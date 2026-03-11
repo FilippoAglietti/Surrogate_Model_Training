@@ -1,269 +1,195 @@
-"""
-Module 4 — Hyperparameter Optimization
-Grid search, Random search, Optuna (TPE) with live progress.
-"""
-import streamlit as st
+import customtkinter as ctk
+import threading
+import queue
+import optuna
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.callbacks import EarlyStopping
-import optuna
-import itertools
-import random as rand_module
 
-from modules.model_builder import build_surrogate_model
-from utils.theme import neon_header, terminal_block, status_badge, COLORS
+from modules.model_builder import build_surrogate_model, get_keras_loss, get_keras_optimizer
+from utils.theme import COLORS, FONTS
 from utils.state import get_state, set_state
 
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 
-
-def get_keras_loss(name):
-    losses = {
-        "MeanSquaredError": tf.keras.losses.MeanSquaredError(),
-        "MeanAbsoluteError": tf.keras.losses.MeanAbsoluteError(),
-        "Huber": tf.keras.losses.Huber(),
-        "LogCosh": tf.keras.losses.LogCosh(),
-    }
-    return losses.get(name, tf.keras.losses.MeanSquaredError())
-
-def get_keras_optimizer(name, lr):
-    optimizers = {
-        "Adam": tf.keras.optimizers.Adam(learning_rate=lr),
-        "AdamW": tf.keras.optimizers.AdamW(learning_rate=lr) if hasattr(tf.keras.optimizers, 'AdamW') else tf.keras.optimizers.Adam(learning_rate=lr),
-        "SGD": tf.keras.optimizers.SGD(learning_rate=lr),
-        "RMSprop": tf.keras.optimizers.RMSprop(learning_rate=lr),
-    }
-    return optimizers.get(name, tf.keras.optimizers.Adam(learning_rate=lr))
-
 def _train_eval(input_dim, layers_cfg, X_train, y_train, X_val, y_val, lr, batch_size, epochs, loss_name):
     """Quick train + eval for HPO trial. Returns best val loss."""
     model = build_surrogate_model(input_dim, 1, layers_cfg)
-    
     criterion = get_keras_loss(loss_name)
-    optimizer = get_keras_optimizer("Adam", lr) # Default to Adam for HPO if not specified
+    optimizer = get_keras_optimizer("Adam", lr)
     
     model.compile(optimizer=optimizer, loss=criterion)
-    
     early_stop = EarlyStopping(monitor='val_loss', patience=15, restore_best_weights=True)
     
     history = model.fit(
-        X_train, y_train,
-        validation_data=(X_val, y_val),
-        epochs=epochs,
-        batch_size=batch_size,
-        callbacks=[early_stop],
-        verbose=0
+        X_train, y_train, validation_data=(X_val, y_val),
+        epochs=epochs, batch_size=batch_size,
+        callbacks=[early_stop], verbose=0
     )
-    
     return min(history.history['val_loss'])
 
-
-def render():
-    neon_header("HYPERPARAMETER OPTIMIZATION", "🔍")
-
-    if not get_state("preprocessed"):
-        terminal_block("[ BLOCKED ] Preprocess data first.\n\n  ← Go to 'Preprocessing'")
-        return
-
-    X_train = get_state("X_train")
-    y_train = get_state("y_train")
-    X_val = get_state("X_val")
-    y_val = get_state("y_val")
-    
-    if X_train is None:
-        return
+class HyperoptFrame(ctk.CTkFrame):
+    def __init__(self, master, **kwargs):
+        super().__init__(master, **kwargs)
         
-    input_dim = X_train.shape[1]
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(1, weight=1)
+        
+        # Header
+        self.header = ctk.CTkLabel(self, text="HYPERPARAMETER OPTIMIZATION 🔍", font=FONTS["title"], text_color=COLORS["cyan"])
+        self.header.grid(row=0, column=0, pady=(30, 20), sticky="w", padx=30)
+        
+        self.content_frame = ctk.CTkScrollableFrame(self, fg_color="transparent")
+        self.content_frame.grid(row=1, column=0, sticky="nsew", padx=10)
+        self.content_frame.grid_columnconfigure((0, 1), weight=1)
+        
+        self.built_ui = False
+        self.q = queue.Queue()
+        self.is_running = False
 
-    # ── Strategy Selection ───────────────────────────────────
-    neon_header("STRATEGY", "🎯")
+    def on_show(self):
+        if not get_state("preprocessed"):
+            self._show_blocked("Preprocess data first.\n← Go to 'Preprocessing'")
+            return
+            
+        if not self.built_ui:
+            self._build_ui()
+            self.built_ui = True
 
-    strategy = st.selectbox("Optimization Method", [
-        "Optuna (TPE)", "Random Search", "Grid Search"
-    ])
+    def _show_blocked(self, message):
+        for widget in self.content_frame.winfo_children():
+            widget.destroy()
+        self.built_ui = False
+        lbl = ctk.CTkLabel(self.content_frame, text=f"[ BLOCKED ]\n{message}", font=FONTS["header"], text_color=COLORS["red"])
+        lbl.grid(row=0, column=0, pady=50, padx=20)
 
-    # ── Search Space ─────────────────────────────────────────
-    neon_header("SEARCH SPACE", "📐")
+    def _build_ui(self):
+        for widget in self.content_frame.winfo_children():
+            widget.destroy()
+            
+        # Strategy
+        c1 = ctk.CTkFrame(self.content_frame, fg_color=COLORS["bg_card"])
+        c1.grid(row=0, column=0, columnspan=2, sticky="ew", pady=10, padx=20)
+        
+        ctk.CTkLabel(c1, text="Optimization Method").grid(row=0, column=0, padx=20, pady=10)
+        self.strat_var = ctk.StringVar(value="Optuna (TPE)")
+        ctk.CTkComboBox(c1, values=["Optuna (TPE)", "Random Search", "Grid Search"], variable=self.strat_var).grid(row=0, column=1, padx=20, pady=10)
+        
+        # Search Space
+        ss = ctk.CTkFrame(self.content_frame, fg_color=COLORS["bg_card"])
+        ss.grid(row=1, column=0, columnspan=2, sticky="ew", pady=10, padx=20)
+        ss.grid_columnconfigure((0,1,2,3), weight=1)
+        
+        # Row 1
+        ctk.CTkLabel(ss, text="Min Layers").grid(row=0, column=0, pady=5)
+        self.min_l = ctk.CTkEntry(ss); self.min_l.insert(0, "1"); self.min_l.grid(row=0, column=1, pady=5)
+        
+        ctk.CTkLabel(ss, text="Max Layers").grid(row=0, column=2, pady=5)
+        self.max_l = ctk.CTkEntry(ss); self.max_l.insert(0, "4"); self.max_l.grid(row=0, column=3, pady=5)
+        
+        # Row 2
+        ctk.CTkLabel(ss, text="Min Neurons").grid(row=1, column=0, pady=5)
+        self.min_u = ctk.CTkEntry(ss); self.min_u.insert(0, "16"); self.min_u.grid(row=1, column=1, pady=5)
+        
+        ctk.CTkLabel(ss, text="Max Neurons").grid(row=1, column=2, pady=5)
+        self.max_u = ctk.CTkEntry(ss); self.max_u.insert(0, "256"); self.max_u.grid(row=1, column=3, pady=5)
 
-    # Re-use activation list
-    ACTIVATION_NAMES = ["ReLU", "LeakyReLU", "ELU", "SELU", "Tanh", "Sigmoid", "GELU", "SiLU (Swish)"]
+        # Configs
+        ctk.CTkLabel(ss, text="Trials").grid(row=2, column=0, pady=5)
+        self.trials_e = ctk.CTkEntry(ss); self.trials_e.insert(0, "15"); self.trials_e.grid(row=2, column=1, pady=5)
+        
+        ctk.CTkLabel(ss, text="Epochs p. trial").grid(row=2, column=2, pady=5)
+        self.ep_e = ctk.CTkEntry(ss); self.ep_e.insert(0, "30"); self.ep_e.grid(row=2, column=3, pady=5)
 
-    col1, col2 = st.columns(2)
-    with col1:
-        lr_min = st.number_input("LR min", 1e-6, 0.1, 1e-4, format="%.6f")
-        layers_min = st.number_input("Min layers", 1, 10, 1)
-        units_min = st.number_input("Min neurons/layer", 8, 512, 16, 8)
-        dropout_min = st.slider("Dropout min", 0.0, 0.5, 0.0, 0.05)
-    with col2:
-        lr_max = st.number_input("LR max", 1e-5, 1.0, 1e-2, format="%.6f")
-        layers_max = st.number_input("Max layers", 1, 10, 4)
-        units_max = st.number_input("Max neurons/layer", 16, 1024, 256, 8)
-        dropout_max = st.slider("Dropout max", 0.0, 0.8, 0.3, 0.05)
+        # Run block
+        self.run_btn = ctk.CTkButton(self.content_frame, text="⚡ RUN OPTIMIZATION", height=40, command=self.start_optimization)
+        self.run_btn.grid(row=2, column=0, columnspan=2, pady=20)
+        
+        # Terminal Log
+        self.log_box = ctk.CTkTextbox(self.content_frame, height=200, font=FONTS["code"], fg_color="#0D1117", text_color=COLORS["text"])
+        self.log_box.grid(row=3, column=0, columnspan=2, sticky="ew", padx=20, pady=10)
+        self.log_box.configure(state="disabled")
 
-    batch_options = st.multiselect("Batch Sizes", [16, 32, 64, 128, 256, 512], default=[32, 64, 128])
-    if not batch_options:
-        batch_options = [64]
+    def _log(self, text):
+        self.log_box.configure(state="normal")
+        self.log_box.insert("end", text + "\n")
+        self.log_box.yview("end")
+        self.log_box.configure(state="disabled")
 
-    loss_name = st.selectbox("Loss for HPO", ["MeanSquaredError", "MeanAbsoluteError", "Huber", "LogCosh"])
-    hpo_epochs = st.number_input("Epochs per trial", 10, 500, 50, 10)
-    n_trials = st.number_input("Number of trials", 3, 200, 20, 1)
+    def start_optimization(self):
+        if self.is_running: return
+        self.is_running = True
+        self.run_btn.configure(state="disabled", text="RUNNING...")
+        self.log_box.configure(state="normal"); self.log_box.delete("0.0", "end"); self.log_box.configure(state="disabled")
+        
+        # Parse inputs
+        try:
+            cfg = {
+                "strat": self.strat_var.get(),
+                "min_l": int(self.min_l.get()), "max_l": int(self.max_l.get()),
+                "min_u": int(self.min_u.get()), "max_u": int(self.max_u.get()),
+                "trials": int(self.trials_e.get()), "epochs": int(self.ep_e.get()),
+                "input_dim": get_state("X_train").shape[1],
+                "X_train": get_state("X_train"), "y_train": get_state("y_train"),
+                "X_val": get_state("X_val"), "y_val": get_state("y_val")
+            }
+        except:
+            self._log("ERROR: Invalid numeric inputs.")
+            self.is_running = False
+            self.run_btn.configure(state="normal", text="⚡ RUN OPTIMIZATION")
+            return
+            
+        t = threading.Thread(target=self._run_optuna_thread, args=(cfg,))
+        t.start()
+        self.after(100, self.process_queue)
 
-    st.markdown("---")
+    def process_queue(self):
+        try:
+            while True:
+                msg = self.q.get_nowait()
+                if msg == "DONE":
+                    self.is_running = False
+                    self.run_btn.configure(state="normal", text="⚡ RUN OPTIMIZATION")
+                    self._log("\n[ OK ] Optimization Complete.")
+                    break
+                else:
+                    self._log(msg)
+        except queue.Empty:
+            if self.is_running:
+                self.after(100, self.process_queue)
 
-    # ── Run Optimization ─────────────────────────────────────
-    if st.button("⚡  RUN OPTIMIZATION", use_container_width=True, type="primary"):
-        progress = st.progress(0)
-        status_text = st.empty()
-        results_container = st.container()
+    def _run_optuna_thread(self, c):
+        self.q.put(f"[START] Beginning {c['strat']}...")
+        
+        study = optuna.create_study(direction="minimize")
+        activations = ["ReLU", "LeakyReLU", "ELU", "Tanh"]
+        
+        def objective(trial):
+            n_layers = trial.suggest_int("n_layers", c["min_l"], c["max_l"])
+            layers_cfg = []
+            for i in range(n_layers):
+                u = trial.suggest_int(f"units_{i}", c["min_u"], c["max_u"], step=8)
+                d = trial.suggest_float(f"dropout_{i}", 0.0, 0.5, step=0.1)
+                act = trial.suggest_categorical(f"act_{i}", activations)
+                layers_cfg.append({"units": u, "activation": act, "dropout": d})
 
-        all_results = []
+            lr = trial.suggest_float("lr", 1e-4, 1e-2, log=True)
+            bs = trial.suggest_categorical("batch_size", [32, 64, 128])
 
-        if strategy == "Optuna (TPE)":
-            study = optuna.create_study(direction="minimize")
+            val_loss = _train_eval(c["input_dim"], layers_cfg, c["X_train"], c["y_train"], c["X_val"], c["y_val"], lr, bs, c["epochs"], "MeanSquaredError")
+            return val_loss
 
-            def objective(trial):
-                n_layers = trial.suggest_int("n_layers", int(layers_min), int(layers_max))
-                layers_cfg = []
-                for i in range(n_layers):
-                    u = trial.suggest_int(f"units_{i}", int(units_min), int(units_max), step=8)
-                    d = trial.suggest_float(f"dropout_{i}", dropout_min, dropout_max, step=0.05)
-                    act = trial.suggest_categorical(f"act_{i}", ACTIVATION_NAMES)
-                    layers_cfg.append({"units": u, "activation": act, "dropout": d})
-
-                lr = trial.suggest_float("lr", lr_min, lr_max, log=True)
-                bs = trial.suggest_categorical("batch_size", batch_options)
-
-                val_loss = _train_eval(input_dim, layers_cfg, X_train, y_train, X_val, y_val,
-                                       lr, bs, int(hpo_epochs), loss_name)
-                return val_loss
-
-            for i in range(int(n_trials)):
+        try:
+            for i in range(c["trials"]):
                 study.optimize(objective, n_trials=1, show_progress_bar=False)
-                pct = (i + 1) / int(n_trials)
-                progress.progress(pct)
                 best = study.best_trial
-                status_text.markdown(
-                    f"<span style='color:{COLORS['cyan']}'>Trial {i+1}/{int(n_trials)} | "
-                    f"Best loss: {best.value:.6f}</span>",
-                    unsafe_allow_html=True
-                )
-                all_results.append({"trial": i + 1, "loss": study.trials[-1].value,
-                                    "best_loss": best.value})
-
-            best_p = study.best_params
+                val = study.trials[-1].value
+                self.q.put(f"Trial {i+1:>3}/{c['trials']} | Loss: {val:.6f} | Best: {best.value:.6f}")
+                
+            set_state("best_params", study.best_params)
             set_state("optuna_study", study)
-
-        elif strategy == "Random Search":
-            best_val_loss = float("inf")
-            best_p = {}
-
-            for i in range(int(n_trials)):
-                n_layers = rand_module.randint(int(layers_min), int(layers_max))
-                layers_cfg = []
-                for _ in range(n_layers):
-                    layers_cfg.append({
-                        "units": rand_module.choice(range(int(units_min), int(units_max) + 1, 8)),
-                        "activation": rand_module.choice(ACTIVATION_NAMES),
-                        "dropout": round(rand_module.uniform(dropout_min, dropout_max), 2)
-                    })
-                lr = 10 ** rand_module.uniform(np.log10(lr_min), np.log10(lr_max))
-                bs = rand_module.choice(batch_options)
-
-                val_loss = _train_eval(input_dim, layers_cfg, X_train, y_train, X_val, y_val,
-                                       lr, bs, int(hpo_epochs), loss_name)
-
-                if val_loss < best_val_loss:
-                    best_val_loss = val_loss
-                    best_p = {"n_layers": n_layers, "layers": layers_cfg,
-                              "lr": lr, "batch_size": bs}
-
-                pct = (i + 1) / int(n_trials)
-                progress.progress(pct)
-                status_text.markdown(
-                    f"<span style='color:{COLORS['cyan']}'>Trial {i+1}/{int(n_trials)} | "
-                    f"Best loss: {best_val_loss:.6f}</span>",
-                    unsafe_allow_html=True
-                )
-                all_results.append({"trial": i + 1, "loss": val_loss,
-                                    "best_loss": best_val_loss})
-
-        else:  # Grid Search
-            layer_counts = list(range(int(layers_min), int(layers_max) + 1))
-            unit_options = list(range(int(units_min), int(units_max) + 1, 32))
-            lr_options = np.logspace(np.log10(lr_min), np.log10(lr_max), 4).tolist()
-
-            grid = list(itertools.product(layer_counts, unit_options[:4], lr_options, batch_options))
-            if len(grid) > int(n_trials):
-                grid = rand_module.sample(grid, int(n_trials))
-
-            best_val_loss = float("inf")
-            best_p = {}
-
-            for i, (nl, nu, lr_v, bs) in enumerate(grid):
-                layers_cfg = [{"units": nu, "activation": "ReLU", "dropout": 0.1}] * nl
-                val_loss = _train_eval(input_dim, layers_cfg, X_train, y_train, X_val, y_val,
-                                       lr_v, bs, int(hpo_epochs), loss_name)
-
-                if val_loss < best_val_loss:
-                    best_val_loss = val_loss
-                    best_p = {"n_layers": nl, "units": nu, "lr": lr_v, "batch_size": bs}
-
-                pct = (i + 1) / len(grid)
-                progress.progress(pct)
-                status_text.markdown(
-                    f"<span style='color:{COLORS['cyan']}'>Trial {i+1}/{len(grid)} | "
-                    f"Best loss: {best_val_loss:.6f}</span>",
-                    unsafe_allow_html=True
-                )
-                all_results.append({"trial": i + 1, "loss": val_loss,
-                                    "best_loss": best_val_loss})
-
-        set_state("best_params", best_p)
-        progress.progress(1.0)
-        status_text.markdown(
-            f"<span style='color:{COLORS['green']}'>✓ Optimization complete!</span>",
-            unsafe_allow_html=True
-        )
-
-        # Show results
-        with results_container:
-            import plotly.graph_objects as go
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(
-                x=[r["trial"] for r in all_results],
-                y=[r["loss"] for r in all_results],
-                mode="markers", name="Trial Loss",
-                marker=dict(color=COLORS['cyan'], size=6, opacity=0.6)
-            ))
-            fig.add_trace(go.Scatter(
-                x=[r["trial"] for r in all_results],
-                y=[r["best_loss"] for r in all_results],
-                mode="lines", name="Best So Far",
-                line=dict(color=COLORS['green'], width=2)
-            ))
-            fig.update_layout(
-                template="plotly_dark",
-                paper_bgcolor=COLORS['bg'],
-                plot_bgcolor=COLORS['bg_card'],
-                title="Optimization Progress",
-                xaxis_title="Trial", yaxis_title="Validation Loss",
-                height=350,
-                font=dict(family="JetBrains Mono, monospace", color=COLORS['text'])
-            )
-            st.plotly_chart(fig, use_container_width=True)
-
-    # ── Show Best Params ─────────────────────────────────────
-    bp = get_state("best_params")
-    if bp:
-        lines = "┌──────────────────────────────────────────┐\n"
-        lines += "│  BEST HYPERPARAMETERS                    │\n"
-        lines += "├──────────────────────────────────────────┤\n"
-        for k, v in bp.items():
-            if isinstance(v, float):
-                val = f"{v:.6f}"
-            else:
-                val = str(v)
-            lines += f"│  {k:<16}: {val:<22}│\n"
-        lines += "└──────────────────────────────────────────┘"
-        terminal_block(lines)
-        status_badge("✓ Best params found — Apply in Model Builder or Train directly →", "ready")
+            self.q.put(f"\nBest Params: {study.best_params}")
+        except Exception as e:
+            self.q.put(f"ERROR: {str(e)}")
+            
+        self.q.put("DONE")

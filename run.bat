@@ -1,56 +1,35 @@
 @echo off
-title Surrogate Model Trainer
-echo.
-echo   ============================================
-echo    SURROGATE MODEL TRAINING ENGINE
-echo    Starting up...
-echo   ============================================
-echo.
+echo ==============================================
+echo SURROGATE BUILDER - Environment Setup Check
+echo ==============================================
 
-REM ── Check Python ──────────────────────────────
-where python >nul 2>&1
-if %errorlevel% neq 0 (
-    echo [ERROR] Python not found in PATH.
-    echo         Install Python 3.9+ from https://python.org
-    pause
-    exit /b 1
-)
-
-REM ── Create venv if it doesn't exist ───────────
-if not exist "venv" (
-    echo [INFO] Creating virtual environment...
+if not exist "venv\" (
+    echo [INFO] Python virtual environment not found. Creating 'venv'...
     python -m venv venv
-    if %errorlevel% neq 0 (
-        echo [ERROR] Failed to create virtual environment.
+    if errorlevel 1 (
+        echo [ERROR] Failed to create virtual environment. Please ensure Python is installed and in your PATH.
         pause
-        exit /b 1
+        exit /b %errorlevel%
     )
-    echo [OK]   Virtual environment created.
+    echo [OK] Virtual environment created successfully.
 ) else (
-    echo [OK]   Virtual environment found.
+    echo [OK] Virtual environment 'venv' found.
 )
 
-REM ── Activate venv ─────────────────────────────
-call venv\Scripts\activate.bat
-
-REM ── Install / update dependencies ─────────────
-echo [INFO] Installing dependencies...
-pip install -r requirements.txt --quiet
-if %errorlevel% neq 0 (
+echo.
+echo [INFO] Installing/Updating dependencies from requirements.txt...
+call venv\Scripts\pip.exe install -r requirements.txt
+if errorlevel 1 (
     echo [ERROR] Failed to install dependencies.
     pause
-    exit /b 1
+    exit /b %errorlevel%
 )
-echo [OK]   Dependencies installed.
+echo [OK] Dependencies are up to date.
 
 echo.
-echo   ============================================
-echo    Launching Streamlit app...
-echo    URL: http://localhost:8501
-echo   ============================================
-echo.
-
-REM ── Launch app ────────────────────────────────
-streamlit run app.py
+echo ==============================================
+echo [STARTING] Launching Surrogate Builder...
+echo ==============================================
+call venv\Scripts\python.exe app.py
 
 pause

@@ -1,65 +1,48 @@
 """
-Session state management utilities.
-Centralized helpers for safe state access across modules.
+Centralized state management for Tkinter.
+Replaces Streamlit's session_state.
 """
-import streamlit as st
-from typing import Any
 
+class AppState:
+    _state = {}
 
-def init_state(key: str, default: Any):
-    """Initialize a session state key if it doesn't exist."""
-    if key not in st.session_state:
-        st.session_state[key] = default
+    @classmethod
+    def get(cls, key, default=None):
+        return cls._state.get(key, default)
 
+    @classmethod
+    def set(cls, key, value):
+        cls._state[key] = value
 
-def get_state(key: str, default: Any = None) -> Any:
-    """Safely get a session state value."""
-    return st.session_state.get(key, default)
+    @classmethod
+    def init_defaults(cls):
+        defaults = {
+            "nav_page": "📁  Data Loading",
+            "data_loaded": False,
+            "preprocessed": False,
+            "model_ready": False,
+            "trained": False,
+            "df": None,
+            "input_columns": [],
+            "output_column": None,
+            "X_train": None, "X_val": None, "X_test": None,
+            "y_train": None, "y_val": None, "y_test": None,
+            "scaler_X": None,
+            "scaler_y": None,
+            "layers_config": [{"units": 64, "activation": "ReLU", "dropout": 0.0}],
+            "model_config": None,
+            "model_params_count": 0,
+            "model": None,  # Compiled Keras model
+            "best_params": None,
+            "optuna_study": None,
+            "train_losses": [],
+            "val_losses": [],
+            "training_metrics": {}
+        }
+        for k, v in defaults.items():
+            if k not in cls._state:
+                cls._state[k] = v
 
-
-def set_state(key: str, value: Any):
-    """Set a session state value."""
-    st.session_state[key] = value
-
-
-def init_all_defaults():
-    """Initialize all default session state values for the app."""
-    defaults = {
-        # Data loading
-        "raw_data": None,
-        "input_columns": [],
-        "output_column": None,
-
-        # Preprocessing
-        "preprocessed": False,
-        "X_train": None, "X_val": None, "X_test": None,
-        "y_train": None, "y_val": None, "y_test": None,
-        "scaler_X": None, "scaler_y": None,
-        "nan_strategy": "drop",
-        "normalization": "minmax",
-        "train_ratio": 0.7,
-        "val_ratio": 0.15,
-        "test_ratio": 0.15,
-
-        # Model builder
-        "model": None,
-        "model_config": None,
-        "layers_config": [{"units": 64, "activation": "ReLU", "dropout": 0.0}],
-
-        # Hyperparameter optimization
-        "best_params": None,
-        "optuna_study": None,
-
-        # Training
-        "trained": False,
-        "train_losses": [],
-        "val_losses": [],
-        "best_model_state": None,
-        "training_metrics": {},
-
-        # Results
-        "predictions": None,
-    }
-
-    for key, default in defaults.items():
-        init_state(key, default)
+get_state = AppState.get
+set_state = AppState.set
+init_all_defaults = AppState.init_defaults

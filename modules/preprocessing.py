@@ -1,103 +1,184 @@
-"""
-Module 2 — Preprocessing
-Normalization, train/val/test split, pair plot visualization.
-"""
-import streamlit as st
-import numpy as np
+import customtkinter as ctk
 import pandas as pd
-import plotly.graph_objects as go
+import numpy as np
+import matplotlib
+matplotlib.use("TkAgg")
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import matplotlib.pyplot as plt
+import seaborn as sns
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
-from utils.theme import neon_header, terminal_block, status_badge, COLORS
+from utils.theme import COLORS, FONTS
 from utils.state import get_state, set_state
 
 
-def render():
-    neon_header("PREPROCESSING", "🔧")
+class PreprocessingFrame(ctk.CTkFrame):
+    def __init__(self, master, **kwargs):
+        super().__init__(master, **kwargs)
+        
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(2, weight=1)
+        
+        # Header
+        self.header = ctk.CTkLabel(self, text="PREPROCESSING 🔧", font=FONTS["title"], text_color=COLORS["cyan"])
+        self.header.grid(row=0, column=0, pady=(30, 20), sticky="w", padx=30)
+        
+        self.content_frame = ctk.CTkScrollableFrame(self, fg_color="transparent")
+        self.content_frame.grid(row=1, column=0, sticky="nsew", padx=10)
+        self.content_frame.grid_columnconfigure(0, weight=1)
+        self.content_frame.grid_columnconfigure(1, weight=1)
 
-    df = get_state("raw_data")
-    input_cols = get_state("input_columns")
-    output_col = get_state("output_column")
+        # Plot frame
+        self.plot_frame = ctk.CTkFrame(self.content_frame, fg_color=COLORS["bg_card"], height=400)
+        self.plot_frame.grid(row=2, column=0, columnspan=2, sticky="nsew", pady=20, padx=20)
+        
+        self.built_ui = False
 
-    if df is None or not input_cols or output_col is None:
-        terminal_block("[ BLOCKED ] Load data and select columns first.\n\n  ← Go to 'Data Loading'")
-        return
+    def on_show(self):
+        if not get_state("data_loaded"):
+            self._show_blocked("Load data and select columns first.\n← Go to 'Data Loading'")
+            return
+            
+        if not self.built_ui:
+            self._build_ui()
+            self.built_ui = True
+            
+        # If preprocessed already, ensure plot is visible
+        if get_state("preprocessed"):
+            self.proceed_btn.configure(state="normal")
+            self.status_lbl.configure(text="✓ Data preprocessed and split.", text_color=COLORS["green"])
 
-    all_cols = input_cols + [output_col]
-    data = df[all_cols].copy().dropna()
+    def _show_blocked(self, message):
+        for widget in self.content_frame.winfo_children():
+            widget.destroy()
+        self.built_ui = False
+        lbl = ctk.CTkLabel(self.content_frame, text=f"[ BLOCKED ]\n{message}", font=FONTS["header"], text_color=COLORS["red"])
+        lbl.grid(row=0, column=0, pady=50, padx=20)
 
-    # ── Compact: Normalization + Split side by side ───────────
-    left_col, right_col = st.columns(2)
-
-    with left_col:
-        neon_header("NORMALIZATION", "📏")
-        norm_method = st.selectbox(
-            "Method",
-            ["minmax", "standard", "none"],
-            index=["minmax", "standard", "none"].index(get_state("normalization", "minmax")),
-            format_func=lambda x: {
-                "minmax": "Min-Max Scaling [0, 1]",
-                "standard": "Standard Scaling (Z-score)",
-                "none": "No Normalization"
-            }[x]
-        )
-        set_state("normalization", norm_method)
-
-    with right_col:
-        neon_header("DATA SPLIT", "✂")
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            train_r = st.slider("Train %", 50, 90, int(get_state("train_ratio", 0.7) * 100), 5)
-        with c2:
-            val_r = st.slider("Val %", 5, 30, int(get_state("val_ratio", 0.15) * 100), 5)
-        with c3:
-            test_r = 100 - train_r - val_r
-            st.markdown(f"""
-            <div style="text-align:center; margin-top:1.6rem;">
-                <span style="color:{COLORS['orange']}; font-size:1.3rem; font-weight:700">{test_r}%</span>
-                <br><span style="color:{COLORS['text_dim']}; font-size:0.75rem">Test (auto)</span>
-            </div>
-            """, unsafe_allow_html=True)
-
-    if test_r < 5:
-        status_badge("⚠ Test split too small (< 5%)", "warning")
-        return
-
-    set_state("train_ratio", train_r / 100)
-    set_state("val_ratio", val_r / 100)
-    set_state("test_ratio", test_r / 100)
-
-    # ── Apply Button ─────────────────────────────────────────
-    st.markdown("---")
-
-    if st.button("⚡  APPLY PREPROCESSING", use_container_width=True, type="primary"):
-        X = data[input_cols].values.astype(np.float32)
-        y = data[output_col].values.astype(np.float32).reshape(-1, 1)
-
-        # Normalization
-        scaler_X, scaler_y = None, None
-        if norm_method == "minmax":
-            scaler_X = MinMaxScaler()
-            scaler_y = MinMaxScaler()
-            X = scaler_X.fit_transform(X)
-            y = scaler_y.fit_transform(y)
-        elif norm_method == "standard":
-            scaler_X = StandardScaler()
-            scaler_y = StandardScaler()
-            X = scaler_X.fit_transform(X)
-            y = scaler_y.fit_transform(y)
-
+    def _build_ui(self):
+        for widget in self.content_frame.winfo_children():
+            widget.destroy()
+            
+        # Plot frame needs to be recreated if we destroyed everything
+        self.plot_frame = ctk.CTkFrame(self.content_frame, fg_color=COLORS["bg_card"], height=500)
+        self.plot_frame.grid(row=3, column=0, columnspan=2, sticky="nsew", pady=20, padx=20)
+        self.plot_frame.pack_propagate(False)
+            
+        # -- Settings Controls --
+        settings_frame = ctk.CTkFrame(self.content_frame, fg_color=COLORS["bg_card"])
+        settings_frame.grid(row=0, column=0, columnspan=2, sticky="ew", padx=20, pady=10)
+        settings_frame.grid_columnconfigure(0, weight=1)
+        settings_frame.grid_columnconfigure(1, weight=1)
+        
+        # Scaling
+        ctk.CTkLabel(settings_frame, text="Normalization", font=FONTS["header"]).grid(row=0, column=0, pady=10, sticky="w", padx=20)
+        self.scaling_var = ctk.StringVar(value="Min-Max (0, 1)")
+        scalers = ["Min-Max (0, 1)", "Standard (Z-score)", "None"]
+        self.scale_combo = ctk.CTkComboBox(settings_frame, values=scalers, variable=self.scaling_var)
+        self.scale_combo.grid(row=1, column=0, padx=20, pady=(0, 20), sticky="ew")
+        
+        self.scale_tgt_var = ctk.BooleanVar(value=True)
+        ctk.CTkCheckBox(settings_frame, text="Scale Target Variable", variable=self.scale_tgt_var).grid(row=2, column=0, padx=20, pady=(0, 20), sticky="w")
+        
         # Split
-        X_temp, X_test, y_temp, y_test = train_test_split(
-            X, y, test_size=test_r / 100, random_state=42
+        ctk.CTkLabel(settings_frame, text="Data Split", font=FONTS["header"]).grid(row=0, column=1, pady=10, sticky="w", padx=20)
+        
+        self.train_pct = ctk.DoubleVar(value=0.7)
+        self.val_pct = ctk.DoubleVar(value=0.15)
+        
+        split_controls = ctk.CTkFrame(settings_frame, fg_color="transparent")
+        split_controls.grid(row=1, column=1, rowspan=2, padx=20, sticky="nsew")
+        
+        ctk.CTkLabel(split_controls, text="Train %").grid(row=0, column=0, sticky="w")
+        ctk.CTkSlider(split_controls, variable=self.train_pct, from_=0.1, to=0.9, number_of_steps=80, command=self._update_splits).grid(row=0, column=1, padx=10, sticky="ew")
+        self.train_lbl = ctk.CTkLabel(split_controls, text="70%")
+        self.train_lbl.grid(row=0, column=2, sticky="e")
+        
+        ctk.CTkLabel(split_controls, text="Val %").grid(row=1, column=0, sticky="w", pady=10)
+        ctk.CTkSlider(split_controls, variable=self.val_pct, from_=0.05, to=0.5, number_of_steps=45, command=self._update_splits).grid(row=1, column=1, padx=10, pady=10, sticky="ew")
+        self.val_lbl = ctk.CTkLabel(split_controls, text="15%")
+        self.val_lbl.grid(row=1, column=2, sticky="e", pady=10)
+        
+        self.test_lbl = ctk.CTkLabel(split_controls, text="Test % : 15%", text_color=COLORS["magenta"])
+        self.test_lbl.grid(row=2, column=0, columnspan=3, sticky="w", pady=(0, 10))
+        
+        # Actions
+        actions_frame = ctk.CTkFrame(self.content_frame, fg_color="transparent")
+        actions_frame.grid(row=1, column=0, columnspan=2, sticky="ew", padx=20, pady=10)
+        
+        self.run_btn = ctk.CTkButton(actions_frame, text="⚡ RUN PREPROCESSING", height=40, command=self.run_preprocessing)
+        self.run_btn.pack(side="left", padx=10)
+        
+        self.status_lbl = ctk.CTkLabel(actions_frame, text="Ready to run.", text_color=COLORS["text_dim"])
+        self.status_lbl.pack(side="left", padx=20)
+        
+        self.proceed_btn = ctk.CTkButton(
+            self.content_frame, text="Proceed to Model Builder →",
+            font=FONTS["header"], height=50,
+            fg_color=COLORS["primary_dark"],
+            hover_color=COLORS["primary"],
+            text_color="#000",
+            state="disabled",
+            command=self.go_to_model_builder
         )
-        relative_val = val_r / (train_r + val_r)
-        X_train, X_val, y_train, y_val = train_test_split(
-            X_temp, y_temp, test_size=relative_val, random_state=42
-        )
+        self.proceed_btn.grid(row=4, column=0, columnspan=2, pady=30, padx=20, sticky="ew")
 
-        # Save NumPy arrays directly for TensorFlow
+    def _update_splits(self, _=None):
+        t = self.train_pct.get()
+        v = self.val_pct.get()
+        if t + v >= 0.95:
+            v = 0.95 - t
+            self.val_pct.set(v)
+            
+        test = 1.0 - t - v
+        self.train_lbl.configure(text=f"{t*100:.0f}%")
+        self.val_lbl.configure(text=f"{v*100:.0f}%")
+        self.test_lbl.configure(text=f"Test % : {test*100:.0f}%")
+
+    def run_preprocessing(self):
+        df = get_state("df")
+        input_cols = get_state("input_columns")
+        output_col = get_state("output_column")
+        
+        # Drop NaNs
+        df = df.dropna(subset=input_cols + [output_col]).copy()
+        
+        X = df[input_cols].values
+        y = df[[output_col]].values
+        
+        # Scaling
+        scaler_X = None
+        scaler_y = None
+        scale_type = self.scaling_var.get()
+        
+        if scale_type == "Min-Max (0, 1)":
+            scaler_X = MinMaxScaler()
+            X = scaler_X.fit_transform(X)
+            if self.scale_tgt_var.get():
+                scaler_y = MinMaxScaler()
+                y = scaler_y.fit_transform(y)
+        elif scale_type == "Standard (Z-score)":
+            scaler_X = StandardScaler()
+            X = scaler_X.fit_transform(X)
+            if self.scale_tgt_var.get():
+                scaler_y = StandardScaler()
+                y = scaler_y.fit_transform(y)
+                
+        # Split (Math)
+        train_p = self.train_pct.get()
+        val_p = self.val_pct.get()
+        test_p = max(0.01, 1.0 - train_p - val_p)
+        
+        X_train, X_temp, y_train, y_temp = train_test_split(
+            X, y, test_size=(1.0 - train_p), random_state=42
+        )
+        relative_val = val_p / (val_p + test_p)
+        X_val, X_test, y_val, y_test = train_test_split(
+            X_temp, y_temp, test_size=(1.0 - relative_val), random_state=42
+        )
+        
+        # Save state for TF
         set_state("X_train", X_train)
         set_state("X_val", X_val)
         set_state("X_test", X_test)
@@ -107,75 +188,43 @@ def render():
         set_state("scaler_X", scaler_X)
         set_state("scaler_y", scaler_y)
         set_state("preprocessed", True)
+        
+        self.status_lbl.configure(text=f"✓ Split: {len(X_train)} Train | {len(X_val)} Val | {len(X_test)} Test", text_color=COLORS["green"])
+        self.proceed_btn.configure(state="normal")
+        
+        # Draw plot
+        self._draw_pair_plot(X_train, y_train.flatten(), input_cols, output_col)
 
-        # Reset downstream
-        set_state("model", None)
-        set_state("trained", False)
-        set_state("best_params", None)
-
-        st.rerun()
-
-    # ── Show status ──────────────────────────────────────────
-    if get_state("preprocessed"):
-        X_tr = get_state("X_train")
-        X_v = get_state("X_val")
-        X_te = get_state("X_test")
-
-        summary = f"""┌────────────────────────────────────────┐
-│  PREPROCESSING COMPLETE                │
-├────────────────────────────────────────┤
-│  Normalization: {norm_method:<22}│
-│  Train samples: {X_tr.shape[0]:<22}│
-│  Val samples  : {X_v.shape[0]:<22}│
-│  Test samples : {X_te.shape[0]:<22}│
-│  Input dim    : {X_tr.shape[1]:<22}│
-│  Rows (clean) : {data.shape[0]:<22}│
-└────────────────────────────────────────┘"""
-        terminal_block(summary)
-
-        status_badge("✓ READY — Select 'Model Builder' in the sidebar →", "ready")
-
-        # ── Pair Plot ────────────────────────────────────────
-        st.markdown("---")
-        neon_header("PAIR PLOT", "📊")
-
-        # Build a dataframe from training data for the pair plot
-        X_tr_np = X_tr
-        y_tr_np = get_state("y_train").flatten()
-
-        plot_df = pd.DataFrame(X_tr_np, columns=input_cols)
-        plot_df[output_col] = y_tr_np
-
-        # Limit to max 6 cols for readability
-        plot_cols = all_cols[:6]
-        plot_subset = plot_df[plot_cols] if len(plot_cols) <= len(plot_df.columns) else plot_df
-
-        # Build Splom (scatter plot matrix) with histogram on diagonal
-        dimensions = []
-        for col in plot_cols:
-            dimensions.append(dict(label=col, values=plot_subset[col]))
-
-        fig = go.Figure(data=go.Splom(
-            dimensions=dimensions,
-            marker=dict(
-                size=3,
-                color=plot_subset[output_col],
-                colorscale=[[0, '#00e5ff'], [0.5, '#ff00ff'], [1, '#ffd600']],
-                showscale=True,
-                colorbar=dict(title=output_col, thickness=12, len=0.5),
-                opacity=0.5,
-                line=dict(width=0),
-            ),
-            diagonal=dict(visible=True),
-            showupperhalf=False,
-        ))
-        fig.update_layout(
-            template="plotly_dark",
-            paper_bgcolor=COLORS['bg'],
-            plot_bgcolor=COLORS['bg_card'],
-            height=max(550, len(plot_cols) * 130),
-            font=dict(family="JetBrains Mono, monospace", size=9, color=COLORS['text']),
-            margin=dict(l=60, r=20, t=30, b=40),
-            dragmode='select',
+    def _draw_pair_plot(self, X_tr, y_tr, input_cols, output_col):
+        for widget in self.plot_frame.winfo_children():
+            widget.destroy()
+            
+        plot_df = pd.DataFrame(X_tr, columns=input_cols)
+        plot_df[output_col] = y_tr
+        
+        # Use a max of 4 features + target so it doesn't hang tk/matplotlib
+        cols_to_plot = input_cols[:4] + [output_col]
+        plot_df = plot_df[cols_to_plot]
+        
+        plt.style.use('dark_background')
+        fig = plt.figure(figsize=(8, 6), dpi=100)
+        fig.patch.set_facecolor(COLORS["bg_card"])
+        
+        # Seaborn pairplot
+        g = sns.pairplot(
+            plot_df, 
+            diag_kind="hist",
+            plot_kws={'alpha':0.6, 'color': COLORS['cyan'], 's':15},
+            diag_kws={'color': COLORS['magenta']},
+            corner=True
         )
-        st.plotly_chart(fig, use_container_width=True)
+        g.fig.set_facecolor(COLORS["bg_card"])
+        
+        # Embed in Tkinter
+        canvas = FigureCanvasTkAgg(g.fig, master=self.plot_frame)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill="both", expand=True)
+        # plt.close(g.fig)
+
+    def go_to_model_builder(self):
+        self.master.navigate_to("🏗  Model Builder")
