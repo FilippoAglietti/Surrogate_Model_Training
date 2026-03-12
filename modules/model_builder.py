@@ -11,11 +11,13 @@ from tensorflow.keras.callbacks import Callback, EarlyStopping, ReduceLROnPlatea
 import numpy as np
 import threading
 import queue
+import queue
 import time
 import matplotlib
 matplotlib.use("TkAgg")
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import matplotlib.pyplot as plt
+from sklearn.metrics import r2_score
 
 # --------------- Helper functions ---------------
 
@@ -77,11 +79,8 @@ class TkinterUpdateCallback(Callback):
         self.train_losses.append(train_loss)
         self.val_losses.append(val_loss)
 
-        val_pred = self.model.predict(self.X_val, verbose=0).flatten()
-        y_val_flat = self.y_val.flatten()
-        ss_res = np.sum((y_val_flat - val_pred) ** 2)
-        ss_tot = np.sum((y_val_flat - np.mean(y_val_flat)) ** 2)
-        r2 = 1 - (ss_res / ss_tot) if ss_tot > 0 else 0
+        val_pred = self.model.predict(self.X_val, verbose=0)
+        r2 = r2_score(self.y_val, val_pred)
 
         self.q.put({
             "type": "epoch", "epoch": epoch + 1,
@@ -519,8 +518,9 @@ class ModelBuilderFrame(ctk.CTkFrame):
 
     def _run_training_thread(self, cfg, X_train, y_train, X_val, y_val, use_es, es_pat, es_del, use_rlr, rlr_factor, rlr_pat, rlr_min):
         try:
+            output_dim = y_train.shape[1] if len(y_train.shape) > 1 else 1
             model = build_surrogate_model(
-                cfg["input_dim"], 1, cfg["num_layers"], cfg["neurons"],
+                cfg["input_dim"], output_dim, cfg["num_layers"], cfg["neurons"],
                 cfg["act_hidden"], cfg["act_out"], cfg["dropout"], cfg["l1"], cfg["l2"]
             )
             criterion = get_keras_loss(cfg["loss"])
@@ -550,11 +550,8 @@ class ModelBuilderFrame(ctk.CTkFrame):
             v_losses = st_callback.val_losses
 
             if len(t_losses) > 0:
-                val_pred = model.predict(X_val, verbose=0).flatten()
-                y_val_flat = y_val.flatten()
-                ss_res = np.sum((y_val_flat - val_pred) ** 2)
-                ss_tot = np.sum((y_val_flat - np.mean(y_val_flat)) ** 2)
-                r2 = 1 - (ss_res / ss_tot) if ss_tot > 0 else 0
+                val_pred = model.predict(X_val, verbose=0)
+                r2 = r2_score(y_val, val_pred)
 
                 set_state("model", model)
                 set_state("trained", True)

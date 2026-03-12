@@ -1,10 +1,10 @@
-# ⚡ Surrogate Model Training Engine
+# ⚡ Surrogate Model Training Engine V3
 
-A modular ML training & optimization tool for building **surrogate models** using Neural Networks. Built with **Streamlit**, **PyTorch**, and **Optuna** — featuring a dark neon terminal-style GUI.
+A modular ML training & optimization tool for building **surrogate models** using Neural Networks. Built natively with **CustomTkinter**, **TensorFlow/Keras**, and **Optuna** — featuring a dark neon aesthetic.
 
 ![Python](https://img.shields.io/badge/Python-3.9+-00ff41?style=flat-square&logo=python&logoColor=white)
 ![TensorFlow](https://img.shields.io/badge/TensorFlow-2.15+-00e5ff?style=flat-square&logo=tensorflow&logoColor=white)
-![Streamlit](https://img.shields.io/badge/Streamlit-1.30+-ff6e40?style=flat-square&logo=streamlit&logoColor=white)
+![CustomTkinter](https://img.shields.io/badge/CustomTkinter-5.2+-ff6e40?style=flat-square&logo=python&logoColor=white)
 
 ---
 
@@ -17,7 +17,7 @@ run.bat
 The batch file will:
 1. Create a Python virtual environment (if not found)
 2. Install all dependencies
-3. Launch the Streamlit app at `http://localhost:8501`
+3. Launch the desktop app using `python app.py`
 
 ### Manual Setup
 ```bash
@@ -26,7 +26,7 @@ venv\Scripts\activate      # Windows
 # source venv/bin/activate # Linux/Mac
 
 pip install -r requirements.txt
-streamlit run app.py
+python app.py
 ```
 
 ---
@@ -35,22 +35,12 @@ streamlit run app.py
 
 | Module | Description |
 |--------|-------------|
-| **📂 Data Loading** | Upload Excel/CSV, interactive column selection, data preview |
-| **🔧 Preprocessing** | NaN handling, Min-Max/Standard normalization, train/val/test split |
-| **🏗 Model Builder** | Dynamic NN architecture (layers, activations, dropout), loss & optimizer config |
-| **🔍 Hyperopt** | Optuna (TPE), Random Search, Grid Search with live progress |
-| **🚀 Training** | Real-time loss curves, R² metrics, early stopping, epoch log via custom Keras callbacks |
-| **📊 Results** | Predicted vs Actual, residuals, feature importance, export CSV/Excel/model (.h5) |
-
----
-
-## 🛠 Tech Stack
-
-- **Frontend**: Streamlit (dark neon theme, JetBrains Mono, ASCII art)
-- **ML Backend**: TensorFlow / Keras (feedforward neural networks)
-- **Optimization**: Optuna (TPE sampler), scikit-learn
-- **Visualization**: Plotly (interactive dark charts)
-- **Data**: Pandas, NumPy, openpyxl
+| **📂 Data Loading** | Upload Excel/CSV, Multi-Output Selection, basic data stats |
+| **🔧 Preprocessing** | Train/Val/Test split, MinMax/Standard Scaling, **PCA for Inputs/Outputs**, Correlation Heatmaps |
+| **🏗 Model Builder** | Dynamic Multi-Output NN architecture, loss & optimizer config, live training dash |
+| **🔍 Hyperopt** | Threaded **Optuna** (TPE) automated search with Matplotlib history plots |
+| **📊 Results** | Dynamic Pred vs Actual grid plots, Test Index Series, Residuals, **Deployable Model Wrapper (.zip)** export |
+| **🔮 Inference** | **Interactive Sensitivity Analysis** (sliders + dynamic curves) & Batch Excel prediction |
 
 ---
 
@@ -58,36 +48,21 @@ streamlit run app.py
 
 ```
 Surrogate_Model_Training/
-├── app.py                  # Main entry point
-├── run.bat                 # Windows launcher (auto venv)
+├── app.py                  # Main CustomTkinter Application
+├── run.bat                 # Windows auto-venv launcher
 ├── requirements.txt        # Dependencies
-├── .streamlit/
-│   └── config.toml         # Dark theme config
+├── generate_multi_dataset.py # Script to create a test multi-output dataset
 ├── utils/
-│   ├── theme.py            # Neon CSS + ASCII art
-│   └── state.py            # Session state helpers
+│   ├── theme.py            # Global styling constants
+│   └── state.py            # Singleton application state dictionary
 └── modules/
-    ├── data_loading.py     # File upload & column selection
-    ├── preprocessing.py    # NaN, normalization, splitting
-    ├── model_builder.py    # NN architecture builder
-    ├── hyperopt.py         # HPO (Optuna/Random/Grid)
-    ├── training.py         # Training loop + dashboard
-    └── results.py          # Plots, metrics, exports
+    ├── data_loading.py     
+    ├── preprocessing.py    
+    ├── model_builder.py    
+    ├── hyperopt.py         
+    ├── results.py         
+    └── inference.py        
 ```
 
----
-
-## 📖 Usage
-
-1. **Data Loading** — Upload your `.xlsx` or `.csv` file, select input features and target output
-2. **Preprocessing** — Handle missing values, normalize data, configure train/val/test split ratios
-3. **Model Builder** — Design your neural network architecture layer-by-layer
-4. *(Optional)* **Hyperopt** — Run automated hyperparameter search
-5. **Training** — Train the model with real-time loss visualization
-6. **Results** — Analyze predictions, download results and trained model
-
----
-
 ## 📄 License
-
-MIT License — feel free to use, modify, and distribute.
+MIT License

@@ -37,25 +37,28 @@ class DataLoadingFrame(ctk.CTkFrame):
         # Data Info Frame
         self.info_frame = ctk.CTkFrame(self.content_frame, fg_color=COLORS["bg_card"])
         self.info_frame.grid(row=2, column=0, pady=20, padx=40, sticky="ew")
-        self.info_frame.grid_columnconfigure(1, weight=1)
+        self.info_frame.grid_columnconfigure(0, weight=1)
         
         self.shape_lbl = ctk.CTkLabel(self.info_frame, text="Rows: 0 | Columns: 0", font=FONTS["body"])
         self.shape_lbl.grid(row=0, column=0, pady=10, padx=20, sticky="w")
         
+        self.stats_box = ctk.CTkTextbox(self.info_frame, height=180, font=FONTS["code"], fg_color="#0D1117", text_color=COLORS["text"])
+        self.stats_box.grid(row=1, column=0, pady=(0, 20), padx=20, sticky="ew")
+        self.stats_box.configure(state="disabled")
+
         # Column Selection Frame
         self.col_frame = ctk.CTkFrame(self.content_frame, fg_color=COLORS["bg_card"])
         self.col_frame.grid(row=3, column=0, pady=10, padx=40, sticky="ew")
         self.col_frame.grid_columnconfigure(0, weight=1)
         self.col_frame.grid_columnconfigure(1, weight=1)
         
-        ctk.CTkLabel(self.col_frame, text="Target (Output) Column", font=FONTS["header"], text_color=COLORS["magenta"]).grid(row=0, column=0, pady=10, padx=20, sticky="w")
-        self.target_combo = ctk.CTkComboBox(self.col_frame, values=[], command=self.update_inputs)
-        self.target_combo.grid(row=1, column=0, pady=(0, 20), padx=20, sticky="ew")
+        ctk.CTkLabel(self.col_frame, text="Target (Output) Columns", font=FONTS["header"], text_color=COLORS["magenta"]).grid(row=0, column=0, pady=10, padx=20, sticky="w")
+        self.targets_scroll = ctk.CTkScrollableFrame(self.col_frame, height=180, fg_color=COLORS["bg"])
+        self.targets_scroll.grid(row=1, column=0, pady=(0, 20), padx=20, sticky="ew")
+        self.target_vars = {}
         
         ctk.CTkLabel(self.col_frame, text="Features (Input) Columns", font=FONTS["header"], text_color=COLORS["cyan"]).grid(row=0, column=1, pady=10, padx=20, sticky="w")
-        
-        # Scrollable frame for checkboxes
-        self.features_scroll = ctk.CTkScrollableFrame(self.col_frame, height=150, fg_color=COLORS["bg"])
+        self.features_scroll = ctk.CTkScrollableFrame(self.col_frame, height=180, fg_color=COLORS["bg"])
         self.features_scroll.grid(row=1, column=1, pady=(0, 20), padx=20, sticky="ew")
         self.feature_vars = {}
         
@@ -92,54 +95,63 @@ class DataLoadingFrame(ctk.CTkFrame):
             self.status_lbl.configure(text=f"Loaded: {os.path.basename(filename)}", text_color=COLORS["green"])
             self.shape_lbl.configure(text=f"Rows: {df.shape[0]} | Columns: {df.shape[1]}")
             
+            # Print stats
+            desc = df.describe().T
+            desc_str = desc[['min', 'max', 'mean', 'std']].round(3).to_string()
+            self.stats_box.configure(state="normal")
+            self.stats_box.delete("0.0", "end")
+            self.stats_box.insert("end", "--- DATASET STATISTICS ---\n" + desc_str)
+            self.stats_box.configure(state="disabled")
+            
             columns = df.select_dtypes(include=['number']).columns.tolist()
             if not columns:
                 messagebox.showerror("Error", "No numeric columns found in dataset.")
                 return
                 
-            # Setup target combo
-            self.target_combo.configure(values=columns)
-            self.target_combo.set(columns[-1])  # Default to last col
-            
-            # Setup feature checkboxes
+            # Setup features and targets checkboxes
             for widget in self.features_scroll.winfo_children():
+                widget.destroy()
+            for widget in self.targets_scroll.winfo_children():
                 widget.destroy()
                 
             self.feature_vars.clear()
+            self.target_vars.clear()
+            
             for i, col in enumerate(columns):
-                var = ctk.StringVar(value="on")
-                chk = ctk.CTkCheckBox(
-                    self.features_scroll, text=col, variable=var, 
-                    onvalue="on", offvalue="off",
-                    command=self.check_ready
-                )
-                chk.grid(row=i, column=0, sticky="w", pady=2, padx=5)
-                self.feature_vars[col] = var
+                # Target
+                t_var = ctk.StringVar(value="off")
+                if i == len(columns) - 1: # Default last column as target
+                    t_var.set("on")
+                t_chk = ctk.CTkCheckBox(self.targets_scroll, text=col, variable=t_var, onvalue="on", offvalue="off", command=self.check_ready)
+                t_chk.grid(row=i, column=0, sticky="w", pady=2, padx=5)
+                self.target_vars[col] = t_var
                 
-            self.update_inputs(self.target_combo.get())
+                # Feature
+                f_var = ctk.StringVar(value="on")
+                if i == len(columns) - 1: # Default last column off for features
+                    f_var.set("off")
+                f_chk = ctk.CTkCheckBox(self.features_scroll, text=col, variable=f_var, onvalue="on", offvalue="off", command=self.check_ready)
+                f_chk.grid(row=i, column=0, sticky="w", pady=2, padx=5)
+                self.feature_vars[col] = f_var
+                
+            self.check_ready()
             
         except Exception as e:
             messagebox.showerror("Error", f"Could not load file:\n{str(e)}")
 
-    def update_inputs(self, selected_target):
-        # Deselect target from features
-        for col, var in self.feature_vars.items():
-            if col == selected_target:
-                var.set("off")
-                # Optionally disable the checkbox entirely:
-                # self.features_scroll.winfo_children()[list(self.feature_vars.keys()).index(col)].configure(state="disabled")
-            else:
-                var.set("on")
-                
-        self.check_ready()
-        
     def check_ready(self):
-        target = self.target_combo.get()
-        features = [col for col, var in self.feature_vars.items() if var.get() == "on" and col != target]
+        # We allow multiple targets and multiple features, but they must be disjoint sets!
+        # Let's enforce disjoint sets: if chosen as target, disable as feature and vice-versa.
         
-        if target and features:
+        targets = [c for c, v in self.target_vars.items() if v.get() == "on"]
+        features = [c for c, v in self.feature_vars.items() if v.get() == "on"]
+        
+        overlap = set(targets).intersection(set(features))
+        
+        if len(targets) > 0 and len(features) > 0 and len(overlap) == 0:
             self.proceed_btn.configure(state="normal")
-            set_state("output_column", target)
+            # Store list of columns instead of a single string
+            set_state("output_column", targets) 
             set_state("input_columns", features)
         else:
             self.proceed_btn.configure(state="disabled")

@@ -9,7 +9,7 @@ from modules.preprocessing import PreprocessingFrame
 from modules.model_builder import ModelBuilderFrame
 from modules.hyperopt import HyperoptFrame
 from modules.results import ResultsFrame
-
+from modules.inference import InferenceFrame
 
 class App(ctk.CTk):
     def __init__(self):
@@ -52,7 +52,8 @@ class App(ctk.CTk):
             ("🔧  Preprocessing", PreprocessingFrame),
             ("🏗  Model Builder", ModelBuilderFrame),
             ("🔍  Hyperopt", HyperoptFrame),
-            ("📊  Results", ResultsFrame)
+            ("📊  Results", ResultsFrame),
+            ("🔮  Inference", InferenceFrame)
         ]
         
         for i, (name, FrameClass) in enumerate(pages):

@@ -19,7 +19,8 @@ def _train_eval(input_dim, num_layers, neurons, act_hidden, act_out, dropout, l1
                 X_train, y_train, X_val, y_val, lr, optimizer_name, loss_name, batch_size, epochs, 
                 es_pat, es_del, rlr_factor, rlr_pat, rlr_min):
     """Quick train + eval for HPO trial. Returns best val loss."""
-    model = build_surrogate_model(input_dim, 1, num_layers, neurons, act_hidden, act_out, dropout, l1, l2)
+    output_dim = y_train.shape[1] if len(y_train.shape) > 1 else 1
+    model = build_surrogate_model(input_dim, output_dim, num_layers, neurons, act_hidden, act_out, dropout, l1, l2)
     criterion = get_keras_loss(loss_name)
     optimizer = get_keras_optimizer(optimizer_name, lr)
     
