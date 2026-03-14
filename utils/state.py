@@ -34,7 +34,10 @@ class AppState:
             "layers_config": [{"units": 64, "activation": "ReLU", "dropout": 0.0}],
             "model_config": None,
             "model_params_count": 0,
-            "model": None,  # Compiled Keras model
+            "model": None,           # Legacy Keras model (kept for compat)
+            "surrogate_model": None, # Active SurrogateModel instance
+            "selected_algo": None,   # Set by Hyperopt "Apply Best" to signal Model Builder
+            "results_stale": False,  # Set True after each training to force Results rebuild
             "best_params": None,
             "optuna_study": None,
             "train_losses": [],
