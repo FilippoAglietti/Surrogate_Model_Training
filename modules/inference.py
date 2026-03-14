@@ -2,6 +2,7 @@ import customtkinter as ctk
 from tkinter import filedialog, messagebox
 import pandas as pd
 import numpy as np
+from itertools import combinations
 import zipfile
 import pickle
 import os
@@ -43,9 +44,10 @@ class InferenceFrame(ctk.CTkFrame):
         
         self.tabview = ctk.CTkTabview(self.content_frame, fg_color=COLORS["bg_card"], state="disabled")
         self.tabview.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
-        
+
         self.tabview.add("Batch Prediction (Excel)")
         self.tabview.add("Interactive Sensitivity")
+        self.tabview.add("2D Sensitivity Contour")
         
         self.model = None
         self.meta = {}
@@ -79,6 +81,7 @@ class InferenceFrame(ctk.CTkFrame):
             
             self._setup_batch_tab()
             self._setup_sensitivity_tab()
+            self._setup_2d_sensitivity_tab()
             
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load wrapper:\n{e}")
@@ -343,6 +346,244 @@ class InferenceFrame(ctk.CTkFrame):
         self.sens_canvas = FigureCanvasTkAgg(fig, master=self.sens_plot_frame)
         self.sens_canvas.draw()
         self.sens_canvas.get_tk_widget().pack(fill="both", expand=True, pady=10)
+
+    # ========================== 2D SENSITIVITY CONTOUR ==========================
+
+    def _setup_2d_sensitivity_tab(self):
+        tab = self.tabview.tab("2D Sensitivity Contour")
+        for w in tab.winfo_children(): w.destroy()
+
+        inputs     = self.meta["input_columns"]
+        out_cols   = self.meta["output_columns"]
+        t_min      = self.meta["train_min"]
+        t_max      = self.meta["train_max"]
+        t_mean     = self.meta["train_mean"]
+
+        tab.grid_columnconfigure(0, weight=0)   # Controls
+        tab.grid_columnconfigure(1, weight=1)   # Plot area
+        tab.grid_rowconfigure(0, weight=1)
+
+        # ── Left: Controls ────────────────────────────────────────────────
+        ctrl = ctk.CTkScrollableFrame(tab, width=360, fg_color=COLORS["bg"])
+        ctrl.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
+
+        # Output selector
+        ctk.CTkLabel(ctrl, text="Output to plot", font=FONTS["header"],
+                     text_color=COLORS["magenta"]).pack(anchor="w", padx=10, pady=(10, 4))
+        self._2d_out_var = ctk.StringVar(value=out_cols[0])
+        ctk.CTkComboBox(ctrl, values=out_cols, variable=self._2d_out_var, width=320).pack(padx=10, pady=(0, 12))
+
+        # Active inputs (max 5)
+        ctk.CTkLabel(ctrl, text="Active Inputs  (max 5 — will be contour axes)",
+                     font=FONTS["header"], text_color=COLORS["cyan"],
+                     wraplength=320).pack(anchor="w", padx=10, pady=(6, 4))
+
+        self._2d_active_vars   = {}   # col → BooleanVar
+        self._2d_slider_vars   = {}   # col → (DoubleVar, label_widget)
+        self._2d_fixed_vars    = {}   # col → StringVar (entry text)
+        self._2d_row_frames    = {}   # col → frame holding slider OR entry
+
+        MAX_ACTIVE = 5
+
+        def toggle_input(col):
+            # Enforce maximum
+            n_active = sum(1 for v in self._2d_active_vars.values() if v.get())
+            if n_active > MAX_ACTIVE:
+                self._2d_active_vars[col].set(False)
+                self._2d_active_count_lbl.configure(
+                    text=f"Active: {MAX_ACTIVE}/{MAX_ACTIVE}  (max reached)",
+                    text_color=COLORS["red"])
+                return
+            self._2d_active_count_lbl.configure(
+                text=f"Active: {n_active}/{MAX_ACTIVE}",
+                text_color=COLORS["cyan"] if n_active <= MAX_ACTIVE else COLORS["red"])
+            _refresh_input_row(col)
+
+        def _refresh_input_row(col):
+            frame = self._2d_row_frames[col]
+            for w in frame.winfo_children(): w.destroy()
+            if self._2d_active_vars[col].get():
+                # Show slider + value label
+                var, _ = self._2d_slider_vars[col]
+                lbl = ctk.CTkLabel(frame, text=f"{var.get():.3g}",
+                                   font=("Helvetica", 11, "bold"), text_color=COLORS["cyan"], width=55)
+                lbl.pack(side="right")
+                self._2d_slider_vars[col] = (var, lbl)
+
+                def on_slide(val, c=col):
+                    sv, lb = self._2d_slider_vars[c]
+                    lb.configure(text=f"{float(val):.3g}")
+
+                sl = ctk.CTkSlider(frame, variable=var,
+                                   from_=t_min[col], to=t_max[col],
+                                   command=on_slide)
+                sl.pack(fill="x", expand=True, padx=(0, 4))
+            else:
+                # Show fixed value entry
+                sv = self._2d_fixed_vars[col]
+                ctk.CTkLabel(frame, text="Fixed:", font=("Helvetica", 10),
+                             text_color=COLORS["text_dim"]).pack(side="left", padx=4)
+                ctk.CTkEntry(frame, textvariable=sv, width=90).pack(side="left")
+
+        for col in inputs:
+            active_var = ctk.BooleanVar(value=False)
+            self._2d_active_vars[col] = active_var
+
+            slider_var = ctk.DoubleVar(value=t_mean[col])
+            self._2d_slider_vars[col] = (slider_var, None)
+
+            fixed_var = ctk.StringVar(value=f"{t_mean[col]:.4g}")
+            self._2d_fixed_vars[col] = fixed_var
+
+            row = ctk.CTkFrame(ctrl, fg_color="transparent")
+            row.pack(fill="x", padx=6, pady=3)
+
+            chk = ctk.CTkCheckBox(row, text=col, variable=active_var,
+                                  command=lambda c=col: toggle_input(c), width=140)
+            chk.pack(side="left")
+
+            val_frame = ctk.CTkFrame(row, fg_color="transparent")
+            val_frame.pack(side="left", fill="x", expand=True, padx=(6, 0))
+            self._2d_row_frames[col] = val_frame
+            _refresh_input_row(col)
+
+        self._2d_active_count_lbl = ctk.CTkLabel(ctrl, text="Active: 0/5",
+                                                  font=("Helvetica", 11),
+                                                  text_color=COLORS["cyan"])
+        self._2d_active_count_lbl.pack(anchor="w", padx=10, pady=6)
+
+        # Resolution
+        ctk.CTkLabel(ctrl, text="Grid Resolution (N×N):", font=("Helvetica", 11)).pack(anchor="w", padx=10)
+        self._2d_res_var = ctk.IntVar(value=30)
+        ctk.CTkSlider(ctrl, variable=self._2d_res_var, from_=10, to=60, number_of_steps=10).pack(fill="x", padx=10)
+
+        # Generate button
+        ctk.CTkButton(ctrl, text="⚡ Generate Contour Grid", height=40,
+                      font=("Helvetica", 13, "bold"),
+                      command=self._generate_2d_contours).pack(fill="x", padx=10, pady=16)
+
+        self._2d_status_lbl = ctk.CTkLabel(ctrl, text="", font=("Helvetica", 11),
+                                           text_color=COLORS["text_dim"], wraplength=320)
+        self._2d_status_lbl.pack(anchor="w", padx=10)
+
+        # ── Right: Plot area ──────────────────────────────────────────────
+        self._2d_plot_frame = ctk.CTkFrame(tab, fg_color="transparent")
+        self._2d_plot_frame.grid(row=0, column=1, sticky="nsew")
+        self._2d_plot_frame.grid_columnconfigure(0, weight=1)
+        self._2d_plot_frame.grid_rowconfigure(0, weight=1)
+
+        ctk.CTkLabel(self._2d_plot_frame,
+                     text="Select active inputs and click 'Generate'.",
+                     text_color=COLORS["text_dim"], font=FONTS["header"]).pack(pady=60)
+
+    def _generate_2d_contours(self):
+        inputs   = self.meta["input_columns"]
+        out_cols = self.meta["output_columns"]
+        t_min    = self.meta["train_min"]
+        t_max    = self.meta["train_max"]
+
+        active = [c for c in inputs if self._2d_active_vars[c].get()]
+        if len(active) < 2:
+            self._2d_status_lbl.configure(text="Select at least 2 active inputs.", text_color=COLORS["red"])
+            return
+
+        out_col = self._2d_out_var.get()
+        out_idx = out_cols.index(out_col)
+
+        # Fixed values for inactive inputs
+        fixed_vals = {}
+        for col in inputs:
+            if col not in active:
+                try:
+                    fixed_vals[col] = float(self._2d_fixed_vars[col].get())
+                except ValueError:
+                    fixed_vals[col] = float(self.meta["train_mean"][col])
+
+        # Base slider values for active inputs (used when not on axis)
+        active_base = {col: self._2d_slider_vars[col][0].get() for col in active}
+
+        pairs = list(combinations(active, 2))
+        n_pairs = len(pairs)
+        n_pts   = self._2d_res_var.get()
+
+        self._2d_status_lbl.configure(
+            text=f"Computing {n_pairs} × {n_pts}² predictions…", text_color=COLORS["cyan"])
+        self._2d_plot_frame.update()
+
+        for w in self._2d_plot_frame.winfo_children(): w.destroy()
+
+        ncols_g = min(n_pairs, 3)
+        nrows_g = int(np.ceil(n_pairs / ncols_g))
+
+        plt.style.use("dark_background")
+        fig, axes = plt.subplots(nrows_g, ncols_g,
+                                 figsize=(ncols_g * 4.5, nrows_g * 4.0), dpi=90)
+        fig.patch.set_facecolor(COLORS["bg_card"])
+        axes_flat = np.array(axes).flatten() if n_pairs > 1 else [axes]
+
+        try:
+            for pi, (col_x, col_y) in enumerate(pairs):
+                ax = axes_flat[pi]
+                ax.set_facecolor(COLORS["bg_card"])
+                ax.tick_params(colors=COLORS["text"], labelsize=8)
+                for spine in ax.spines.values(): spine.set_color(COLORS["border"])
+
+                xs = np.linspace(t_min[col_x], t_max[col_x], n_pts)
+                ys = np.linspace(t_min[col_y], t_max[col_y], n_pts)
+                XX, YY = np.meshgrid(xs, ys)
+
+                n_total = n_pts * n_pts
+                rows_dict = {}
+                # Fixed inputs
+                for col, val in fixed_vals.items():
+                    rows_dict[col] = np.full(n_total, val)
+                # Active inputs at their base value (not on this pair's axes)
+                for col in active:
+                    if col not in (col_x, col_y):
+                        rows_dict[col] = np.full(n_total, active_base[col])
+                # Axis inputs vary on the grid
+                rows_dict[col_x] = XX.ravel()
+                rows_dict[col_y] = YY.ravel()
+
+                grid_df = pd.DataFrame({c: rows_dict[c] for c in inputs})
+                y_pred  = self._predict_raw(grid_df)
+                ZZ = y_pred[:, out_idx].reshape(n_pts, n_pts)
+
+                cf = ax.contourf(XX, YY, ZZ, levels=20, cmap="plasma")
+                ax.contour(XX, YY, ZZ, levels=8, colors="white", alpha=0.2, linewidths=0.5)
+
+                # Base point marker
+                ax.scatter([active_base[col_x]], [active_base[col_y]],
+                           color="white", s=60, zorder=5, marker="x", linewidths=2,
+                           label="Base point")
+
+                cbar = fig.colorbar(cf, ax=ax, fraction=0.04, pad=0.03)
+                cbar.ax.tick_params(colors=COLORS["text"], labelsize=7)
+                cbar.set_label(out_col, color=COLORS["text"], fontsize=8)
+
+                ax.set_xlabel(col_x, color=COLORS["text"], fontsize=9)
+                ax.set_ylabel(col_y, color=COLORS["text"], fontsize=9)
+                ax.set_title(f"{col_x} × {col_y}", color="white", fontsize=10)
+
+            # Hide unused axes
+            for i in range(n_pairs, len(axes_flat)):
+                axes_flat[i].axis("off")
+
+            plt.tight_layout(pad=1.0)
+            canvas = FigureCanvasTkAgg(fig, master=self._2d_plot_frame)
+            canvas.draw()
+            canvas.get_tk_widget().pack(fill="both", expand=True)
+            plt.close(fig)
+
+            self._2d_status_lbl.configure(
+                text=f"✓ {n_pairs} contour plot(s) — output: {out_col}",
+                text_color=COLORS["green"])
+
+        except Exception as e:
+            for w in self._2d_plot_frame.winfo_children(): w.destroy()
+            ctk.CTkLabel(self._2d_plot_frame, text=f"Error: {e}",
+                         text_color=COLORS["red"]).pack(pady=20)
+            self._2d_status_lbl.configure(text=f"Error: {e}", text_color=COLORS["red"])
 
     def on_show(self):
         pass

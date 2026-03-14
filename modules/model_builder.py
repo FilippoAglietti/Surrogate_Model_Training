@@ -324,6 +324,32 @@ class ModelBuilderFrame(ctk.CTkFrame):
         self.lr_min_e.insert(0, "1e-6")
         self.lr_min_e.grid(row=8, column=3, padx=(70, 20), pady=(0, 20), sticky="w")
 
+        # ── LR Scheduler ──
+        sep2 = ctk.CTkFrame(compile_card, height=2, fg_color=COLORS["border"])
+        sep2.grid(row=9, column=0, columnspan=4, sticky="ew", padx=20, pady=(0, 10))
+
+        ctk.CTkLabel(compile_card, text="LR SCHEDULER", font=FONTS["header"], text_color=COLORS["cyan"]).grid(row=10, column=0, columnspan=4, padx=20, pady=(0, 10), sticky="w")
+
+        ctk.CTkLabel(compile_card, text="Scheduler Type").grid(row=11, column=0, padx=20, sticky="w")
+        self.lr_sched_var = ctk.StringVar(value="None (fixed LR)")
+        self.lr_sched_combo = ctk.CTkComboBox(
+            compile_card,
+            values=["None (fixed LR)", "CosineDecay", "ExponentialDecay"],
+            variable=self.lr_sched_var,
+            command=self._on_lr_sched_change
+        )
+        self.lr_sched_combo.grid(row=12, column=0, padx=20, pady=(0, 15), sticky="ew")
+
+        ctk.CTkLabel(compile_card, text="Decay Steps (CosineDecay)").grid(row=11, column=1, padx=10, sticky="w")
+        self.lr_decay_steps_e = ctk.CTkEntry(compile_card, placeholder_text="e.g. 1000")
+        self.lr_decay_steps_e.insert(0, "1000")
+        self.lr_decay_steps_e.grid(row=12, column=1, padx=10, pady=(0, 15), sticky="ew")
+
+        ctk.CTkLabel(compile_card, text="Decay Rate (ExponentialDecay)").grid(row=11, column=2, padx=10, sticky="w")
+        self.lr_decay_rate_e = ctk.CTkEntry(compile_card, placeholder_text="e.g. 0.96")
+        self.lr_decay_rate_e.insert(0, "0.96")
+        self.lr_decay_rate_e.grid(row=12, column=2, padx=10, pady=(0, 15), sticky="ew")
+
         # ── Button Row ──
         ctrl_frame = ctk.CTkFrame(self.content_frame, fg_color="transparent")
         ctrl_frame.grid(row=2, column=0, sticky="ew", padx=20, pady=20)
@@ -356,6 +382,47 @@ class ModelBuilderFrame(ctk.CTkFrame):
         # ── Log Box ──
         self.log_box = ctk.CTkTextbox(self.content_frame, height=180, font=FONTS["code"], fg_color="#0D1117", text_color=COLORS["text"])
         self.log_box.grid(row=4, column=0, sticky="ew", padx=20, pady=(10, 30))
+        self.log_box.configure(state="disabled")
+
+    # ===================== LR Scheduler helper =====================
+
+    def _on_lr_sched_change(self, _=None):
+        pass  # Could grey out irrelevant entries; kept simple for now
+
+    def _build_lr_schedule(self, base_lr: float):
+        """Returns a Keras LR schedule object or the plain float, based on UI selection."""
+        choice = self.lr_sched_var.get()
+        if choice == "CosineDecay":
+            try:
+                steps = int(self.lr_decay_steps_e.get())
+            except ValueError:
+                steps = 1000
+            return tf.keras.optimizers.schedules.CosineDecay(
+                initial_learning_rate=base_lr, decay_steps=steps, alpha=0.0
+            )
+        elif choice == "ExponentialDecay":
+            try:
+                rate = float(self.lr_decay_rate_e.get())
+            except ValueError:
+                rate = 0.96
+            try:
+                steps = int(self.lr_decay_steps_e.get())
+            except ValueError:
+                steps = 1000
+            return tf.keras.optimizers.schedules.ExponentialDecay(
+                initial_learning_rate=base_lr, decay_steps=steps, decay_rate=rate, staircase=False
+            )
+        return base_lr  # Fixed LR
+
+    # ===================== Model Summary =====================
+
+    def _display_model_summary(self, model):
+        lines = []
+        model.summary(print_fn=lambda x: lines.append(x))
+        summary_text = "\n".join(lines)
+        self.log_box.configure(state="normal")
+        self.log_box.delete("0.0", "end")
+        self.log_box.insert("end", "─── MODEL SUMMARY ───\n" + summary_text + "\n")
         self.log_box.configure(state="disabled")
 
     # ===================== Build =====================
@@ -414,6 +481,7 @@ class ModelBuilderFrame(ctk.CTkFrame):
 
         self.train_lbl.configure(text=f"✓ Built: {num_layers}x{neurons} [{temp_model.count_params()} params]", text_color=COLORS["green"])
         self.train_btn.configure(state="normal")
+        self._display_model_summary(temp_model)
 
     # ===================== Training =====================
 
@@ -453,9 +521,11 @@ class ModelBuilderFrame(ctk.CTkFrame):
         rlr_min = float(self.lr_min_e.get())
         use_rlr = self.use_reduce_lr.get()
 
+        lr_schedule = self._build_lr_schedule(float(self.lr_entry.get()))
+
         t = threading.Thread(
             target=self._run_training_thread,
-            args=(cfg, X_train, y_train, X_val, y_val, use_es, es_pat, es_del, use_rlr, rlr_factor, rlr_pat, rlr_min)
+            args=(cfg, X_train, y_train, X_val, y_val, use_es, es_pat, es_del, use_rlr, rlr_factor, rlr_pat, rlr_min, lr_schedule)
         )
         t.start()
 
@@ -517,7 +587,7 @@ class ModelBuilderFrame(ctk.CTkFrame):
             if self.is_running:
                 self.after(50, self.process_queue)
 
-    def _run_training_thread(self, cfg, X_train, y_train, X_val, y_val, use_es, es_pat, es_del, use_rlr, rlr_factor, rlr_pat, rlr_min):
+    def _run_training_thread(self, cfg, X_train, y_train, X_val, y_val, use_es, es_pat, es_del, use_rlr, rlr_factor, rlr_pat, rlr_min, lr_schedule=None):
         try:
             output_dim = y_train.shape[1] if len(y_train.shape) > 1 else 1
             model = build_surrogate_model(
@@ -525,7 +595,8 @@ class ModelBuilderFrame(ctk.CTkFrame):
                 cfg["act_hidden"], cfg["act_out"], cfg["dropout"], cfg["l1"], cfg["l2"]
             )
             criterion = get_keras_loss(cfg["loss"])
-            optimizer = get_keras_optimizer(cfg["optimizer"], cfg["lr"])
+            effective_lr = lr_schedule if lr_schedule is not None else cfg["lr"]
+            optimizer = get_keras_optimizer(cfg["optimizer"], effective_lr)
             model.compile(optimizer=optimizer, loss=criterion)
 
             epochs = cfg["epochs"]

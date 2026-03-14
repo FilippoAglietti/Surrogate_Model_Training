@@ -1,4 +1,6 @@
 import customtkinter as ctk
+import tkinter as tk
+import tkinter.ttk as ttk
 import threading
 import queue
 import optuna
@@ -7,7 +9,12 @@ import tensorflow as tf
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from optuna.visualization.matplotlib import plot_optimization_history
+from optuna.visualization.matplotlib import (
+    plot_optimization_history,
+    plot_param_importances,
+    plot_parallel_coordinate,
+    plot_contour,
+)
 
 from modules.model_builder import build_surrogate_model, get_keras_loss, get_keras_optimizer
 from utils.theme import COLORS, FONTS
@@ -188,9 +195,24 @@ class HyperoptFrame(ctk.CTkFrame):
         self.apply_btn = ctk.CTkButton(resc, text="✓ APPLY BEST TO MODEL BUILDER", font=("Helvetica", 14, "bold"), fg_color=COLORS["green"], hover_color="#2E7D32", state="disabled", command=self._apply_best)
         self.apply_btn.grid(row=0, column=0, pady=10)
 
-        self.plot_frame = ctk.CTkFrame(resc, fg_color="#000", height=280)
-        self.plot_frame.grid(row=1, column=0, sticky="ew", pady=5, padx=10)
-        self.plot_frame.grid_propagate(False)
+        # Contour plot param selectors
+        contour_ctrl = ctk.CTkFrame(resc, fg_color="transparent")
+        contour_ctrl.grid(row=1, column=0, sticky="ew", padx=20, pady=(0, 5))
+        ctk.CTkLabel(contour_ctrl, text="Contour Param X:", font=("Helvetica", 11)).pack(side="left", padx=(0, 6))
+        self.contour_x_var = ctk.StringVar(value="neurons")
+        self.contour_x_combo = ctk.CTkComboBox(contour_ctrl, values=["neurons"], variable=self.contour_x_var, width=130)
+        self.contour_x_combo.pack(side="left", padx=(0, 14))
+        ctk.CTkLabel(contour_ctrl, text="Contour Param Y:", font=("Helvetica", 11)).pack(side="left", padx=(0, 6))
+        self.contour_y_var = ctk.StringVar(value="lr")
+        self.contour_y_combo = ctk.CTkComboBox(contour_ctrl, values=["lr"], variable=self.contour_y_var, width=130)
+        self.contour_y_combo.pack(side="left")
+
+        # Results tabview
+        self.results_tabview = ctk.CTkTabview(resc, fg_color=COLORS["bg"], height=350)
+        self.results_tabview.grid(row=2, column=0, sticky="nsew", pady=5, padx=10)
+        resc.grid_columnconfigure(0, weight=1)
+        for tab_name in ["Optimization History", "Best Trials", "Param Importances", "Parallel Coords", "Contour Plot"]:
+            self.results_tabview.add(tab_name)
 
     def _apply_best(self):
         best = get_state("best_params")
@@ -253,7 +275,7 @@ class HyperoptFrame(ctk.CTkFrame):
                     self.run_btn.configure(state="normal", text="⚡ RUN OPTIMIZATION")
                     self.apply_btn.configure(state="normal", text="✓ APPLY BEST TO MODEL BUILDER")
                     self._log("\n[ OK ] Optimization Complete.")
-                    self._draw_plot()
+                    self._draw_results()
                     break
                 else:
                     self._log(msg)
@@ -261,25 +283,165 @@ class HyperoptFrame(ctk.CTkFrame):
             if self.is_running:
                 self.after(100, self.process_queue)
 
-    def _draw_plot(self):
-        for w in self.plot_frame.winfo_children():
-            w.destroy()
+    # ─── results rendering ────────────────────────────────────────────────────
+
+    def _draw_results(self):
         study = get_state("optuna_study")
-        if study:
-            try:
-                plt.style.use('dark_background')
-                ax = plot_optimization_history(study)
-                fig = ax.figure
-                fig.set_size_inches(8, 3)
-                fig.patch.set_facecolor(COLORS["bg_card"])
-                ax.set_facecolor(COLORS["bg_card"])
-                fig.tight_layout()
-                
-                canvas = FigureCanvasTkAgg(fig, master=self.plot_frame)
-                canvas.draw()
-                canvas.get_tk_widget().pack(fill="both", expand=True)
-            except Exception as e:
-                self._log(f"Plot error: {e}")
+        if not study:
+            return
+
+        # Update contour param dropdowns with actual param names
+        param_names = list(study.best_params.keys())
+        self.contour_x_combo.configure(values=param_names)
+        self.contour_y_combo.configure(values=param_names)
+        if len(param_names) >= 2:
+            self.contour_x_var.set(param_names[0])
+            self.contour_y_var.set(param_names[1])
+
+        self._draw_opt_history(self.results_tabview.tab("Optimization History"), study)
+        self._draw_best_trials_table(self.results_tabview.tab("Best Trials"), study)
+        self._draw_param_importances(self.results_tabview.tab("Param Importances"), study)
+        self._draw_parallel_coords(self.results_tabview.tab("Parallel Coords"), study)
+        self._draw_contour_plot(self.results_tabview.tab("Contour Plot"), study)
+
+    def _embed_fig(self, parent, fig):
+        for w in parent.winfo_children():
+            w.destroy()
+        canvas = FigureCanvasTkAgg(fig, master=parent)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill="both", expand=True)
+        plt.close(fig)
+
+    def _draw_opt_history(self, parent, study):
+        for w in parent.winfo_children():
+            w.destroy()
+        try:
+            plt.style.use('dark_background')
+            ax = plot_optimization_history(study)
+            fig = ax.figure
+            fig.set_size_inches(8, 3.2)
+            fig.patch.set_facecolor(COLORS["bg_card"])
+            ax.set_facecolor(COLORS["bg_card"])
+            fig.tight_layout()
+            self._embed_fig(parent, fig)
+        except Exception as e:
+            ctk.CTkLabel(parent, text=f"Plot error: {e}", text_color=COLORS["red"]).pack(pady=20)
+
+    def _draw_best_trials_table(self, parent, study, top_k=10):
+        for w in parent.winfo_children():
+            w.destroy()
+
+        trials = sorted(study.trials, key=lambda t: t.value if t.value is not None else float("inf"))
+        top = trials[:top_k]
+        if not top:
+            ctk.CTkLabel(parent, text="No completed trials.", text_color=COLORS["red"]).pack(pady=20)
+            return
+
+        param_names = list(study.best_params.keys())
+        col_names = ["Rank", "Val Loss"] + param_names
+
+        style = ttk.Style()
+        style.theme_use("default")
+        style.configure("HPO.Treeview",
+                        background="#1A1A2E", foreground=COLORS["text"],
+                        fieldbackground="#1A1A2E", rowheight=24, font=("Helvetica", 10))
+        style.configure("HPO.Treeview.Heading",
+                        background=COLORS["bg_card"], foreground=COLORS["cyan"],
+                        font=("Helvetica", 10, "bold"), relief="flat")
+        style.map("HPO.Treeview", background=[("selected", COLORS["primary_dark"])])
+
+        container = tk.Frame(parent, bg="#1A1A2E")
+        container.pack(fill="both", expand=True, padx=6, pady=6)
+
+        tree = ttk.Treeview(container, columns=col_names, show="headings", style="HPO.Treeview")
+        vsb = ttk.Scrollbar(container, orient="vertical", command=tree.yview)
+        hsb = ttk.Scrollbar(container, orient="horizontal", command=tree.xview)
+        tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+        vsb.pack(side="right", fill="y")
+        hsb.pack(side="bottom", fill="x")
+        tree.pack(fill="both", expand=True)
+
+        tree.column("Rank",     width=50,  anchor="center")
+        tree.column("Val Loss", width=100, anchor="center")
+        tree.heading("Rank",     text="#")
+        tree.heading("Val Loss", text="Val Loss")
+        for p in param_names:
+            tree.column(p, width=max(80, len(p) * 8), anchor="center")
+            tree.heading(p, text=p)
+
+        tree.tag_configure("best", foreground=COLORS["green"])
+        tree.tag_configure("odd",  background="#16213E")
+        tree.tag_configure("even", background="#1A1A2E")
+
+        for rank, trial in enumerate(top, 1):
+            tag = ("best",) if rank == 1 else (("odd",) if rank % 2 == 1 else ("even",))
+            vals = [rank, f"{trial.value:.6f}"] + [
+                f"{trial.params.get(p, ''):.4g}" if isinstance(trial.params.get(p), float)
+                else str(trial.params.get(p, ""))
+                for p in param_names
+            ]
+            tree.insert("", "end", values=vals, tags=tag)
+
+    def _draw_param_importances(self, parent, study):
+        for w in parent.winfo_children():
+            w.destroy()
+        try:
+            if len(study.trials) < 3:
+                ctk.CTkLabel(parent, text="Need at least 3 completed trials for importance analysis.",
+                             text_color=COLORS["orange"]).pack(pady=20)
+                return
+            plt.style.use("dark_background")
+            ax = plot_param_importances(study)
+            fig = ax.figure
+            fig.set_size_inches(7, 3.5)
+            fig.patch.set_facecolor(COLORS["bg_card"])
+            ax.set_facecolor(COLORS["bg_card"])
+            fig.tight_layout()
+            self._embed_fig(parent, fig)
+        except Exception as e:
+            ctk.CTkLabel(parent, text=f"Importances error: {e}", text_color=COLORS["red"]).pack(pady=20)
+
+    def _draw_parallel_coords(self, parent, study):
+        for w in parent.winfo_children():
+            w.destroy()
+        try:
+            if len(study.trials) < 2:
+                ctk.CTkLabel(parent, text="Need at least 2 trials for parallel coordinates.",
+                             text_color=COLORS["orange"]).pack(pady=20)
+                return
+            plt.style.use("dark_background")
+            ax = plot_parallel_coordinate(study)
+            fig = ax.figure
+            fig.set_size_inches(9, 3.5)
+            fig.patch.set_facecolor(COLORS["bg_card"])
+            fig.tight_layout()
+            self._embed_fig(parent, fig)
+        except Exception as e:
+            ctk.CTkLabel(parent, text=f"Parallel coords error: {e}", text_color=COLORS["red"]).pack(pady=20)
+
+    def _draw_contour_plot(self, parent, study):
+        for w in parent.winfo_children():
+            w.destroy()
+        try:
+            if len(study.trials) < 3:
+                ctk.CTkLabel(parent, text="Need at least 3 trials for contour plot.",
+                             text_color=COLORS["orange"]).pack(pady=20)
+                return
+            px = self.contour_x_var.get()
+            py = self.contour_y_var.get()
+            if px == py:
+                ctk.CTkLabel(parent, text="Select two different parameters.",
+                             text_color=COLORS["orange"]).pack(pady=20)
+                return
+            plt.style.use("dark_background")
+            ax = plot_contour(study, params=[px, py])
+            fig = ax.figure
+            fig.set_size_inches(7, 4)
+            fig.patch.set_facecolor(COLORS["bg_card"])
+            fig.tight_layout()
+            self._embed_fig(parent, fig)
+        except Exception as e:
+            ctk.CTkLabel(parent, text=f"Contour error: {e}", text_color=COLORS["red"]).pack(pady=20)
 
     def _run_optuna_thread(self, c):
         self.q.put(f"[START] Beginning {c['strat']}...")

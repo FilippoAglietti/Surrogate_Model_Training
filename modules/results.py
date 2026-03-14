@@ -1,4 +1,6 @@
 import customtkinter as ctk
+import tkinter as tk
+import tkinter.ttk as ttk
 import numpy as np
 import pandas as pd
 from tkinter import filedialog, messagebox
@@ -7,6 +9,7 @@ matplotlib.use("TkAgg")
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import matplotlib.pyplot as plt
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+import scipy.stats as stats
 import zipfile
 import pickle
 import os
@@ -115,13 +118,20 @@ class ResultsFrame(ctk.CTkFrame):
         self.tabview.add("Pred vs Actual")
         self.tabview.add("Test Index Series")
         self.tabview.add("Residuals")
+        self.tabview.add("Q-Q Plot")
+        self.tabview.add("Per-Target Metrics")
+        self.tabview.add("Worst Predictions")
+        self.tabview.add("SHAP Values")
         self.tabview.add("Export & Wrapper")
-        
-        # We need a frame holding the dropdown if num targets > 4
+
         self._setup_pred_actual(self.tabview.tab("Pred vs Actual"))
         self._setup_series(self.tabview.tab("Test Index Series"))
         self._setup_residuals(self.tabview.tab("Residuals"))
-        
+        self._setup_qq(self.tabview.tab("Q-Q Plot"))
+        self._setup_per_target_metrics(self.tabview.tab("Per-Target Metrics"))
+        self._setup_worst_predictions(self.tabview.tab("Worst Predictions"))
+        self._setup_shap(self.tabview.tab("SHAP Values"), model)
+
         # Export
         self._setup_export(self.tabview.tab("Export & Wrapper"), model)
 
@@ -284,6 +294,326 @@ class ResultsFrame(ctk.CTkFrame):
         canvas = FigureCanvasTkAgg(fig, master=parent)
         canvas.draw()
         canvas.get_tk_widget().pack(fill="both", expand=True, pady=10)
+
+    # ─── Q-Q Plot ─────────────────────────────────────────────────────────────
+
+    def _setup_qq(self, parent):
+        top = ctk.CTkFrame(parent, fg_color="transparent")
+        top.pack(fill="x", pady=5)
+        ctk.CTkLabel(top, text="Select Target:").pack(side="left", padx=10)
+        sel_var = ctk.StringVar(value=self.out_cols[0])
+        plot_frame = ctk.CTkFrame(parent, fg_color="transparent")
+        plot_frame.pack(fill="both", expand=True)
+        ctk.CTkComboBox(top, values=self.out_cols, variable=sel_var,
+                        command=lambda x: self._draw_qq(plot_frame, x, self.out_cols.index(x))).pack(side="left", padx=10)
+        self._draw_qq(plot_frame, self.out_cols[0], 0)
+
+    def _draw_qq(self, parent, col_name, idx):
+        for w in parent.winfo_children(): w.destroy()
+        res = self.y_t[:, idx] - self.y_p[:, idx]
+
+        plt.style.use("dark_background")
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4), dpi=100)
+        fig.patch.set_facecolor(COLORS["bg_card"])
+
+        for ax in [ax1, ax2]:
+            ax.set_facecolor(COLORS["bg_card"])
+            ax.tick_params(colors=COLORS["text"])
+            for spine in ax.spines.values(): spine.set_color(COLORS["border"])
+
+        # Q-Q plot
+        (osm, osr), (slope, intercept, r) = stats.probplot(res, dist="norm")
+        ax1.scatter(osm, osr, color=COLORS["cyan"], s=10, alpha=0.7, label="Residuals")
+        line_x = np.array([osm.min(), osm.max()])
+        ax1.plot(line_x, slope * line_x + intercept, color=COLORS["orange"], linewidth=2, label="Normal line")
+        ax1.set_xlabel("Theoretical Quantiles", color=COLORS["text"])
+        ax1.set_ylabel("Sample Quantiles", color=COLORS["text"])
+        ax1.set_title(f"Q-Q Plot — {col_name}  (R={r:.3f})", color="white")
+        ax1.legend(fontsize=9)
+
+        # Residual histogram with normal overlay
+        ax2.hist(res, bins=35, color=COLORS["magenta"], alpha=0.6, density=True, label="Residuals")
+        mu, sigma = res.mean(), res.std()
+        xs = np.linspace(res.min(), res.max(), 200)
+        ax2.plot(xs, stats.norm.pdf(xs, mu, sigma), color=COLORS["cyan"], linewidth=2, label="Normal fit")
+        ax2.axvline(0, color=COLORS["green"], linestyle="--", linewidth=1)
+        ax2.set_title("Residual Distribution vs Normal", color="white")
+        ax2.legend(fontsize=9)
+
+        plt.tight_layout()
+        canvas = FigureCanvasTkAgg(fig, master=parent)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill="both", expand=True, pady=10)
+        plt.close(fig)
+
+    # ─── Per-Target Metrics ───────────────────────────────────────────────────
+
+    def _setup_per_target_metrics(self, parent):
+        num_targets = len(self.out_cols)
+        rows = []
+        for i, col in enumerate(self.out_cols):
+            yt = self.y_t[:, i]
+            yp = self.y_p[:, i]
+            rmse = np.sqrt(mean_squared_error(yt, yp))
+            mae  = mean_absolute_error(yt, yp)
+            r2   = r2_score(yt, yp)
+            with np.errstate(divide='ignore', invalid='ignore'):
+                mape = np.mean(np.abs((yt - yp) / (yt + 1e-10))) * 100
+            rows.append((col, r2, rmse, mae, mape))
+
+        # Table header
+        col_names = ["Target", "R²", "RMSE", "MAE", "MAPE %"]
+
+        style = ttk.Style()
+        style.theme_use("default")
+        style.configure("Metrics.Treeview",
+                        background="#1A1A2E", foreground=COLORS["text"],
+                        fieldbackground="#1A1A2E", rowheight=26, font=("Helvetica", 11))
+        style.configure("Metrics.Treeview.Heading",
+                        background=COLORS["bg_card"], foreground=COLORS["cyan"],
+                        font=("Helvetica", 11, "bold"), relief="flat")
+        style.map("Metrics.Treeview", background=[("selected", COLORS["primary_dark"])])
+
+        container = tk.Frame(parent, bg="#1A1A2E")
+        container.pack(fill="x", padx=20, pady=20)
+
+        tree = ttk.Treeview(container, columns=col_names, show="headings",
+                            style="Metrics.Treeview", height=num_targets + 1)
+        for cn in col_names:
+            tree.heading(cn, text=cn)
+            tree.column(cn, width=120, anchor="center")
+        tree.column("Target", width=180, anchor="w")
+
+        tree.tag_configure("good",   foreground=COLORS["green"])
+        tree.tag_configure("medium", foreground=COLORS["orange"])
+        tree.tag_configure("bad",    foreground=COLORS["red"])
+
+        for col, r2, rmse, mae, mape in rows:
+            tag = "good" if r2 > 0.9 else "medium" if r2 > 0.7 else "bad"
+            tree.insert("", "end",
+                        values=[col, f"{r2:.4f}", f"{rmse:.4f}", f"{mae:.4f}", f"{mape:.2f}"],
+                        tags=(tag,))
+
+        tree.pack(fill="x")
+
+        # Bar chart of R² per target
+        if num_targets > 1:
+            plt.style.use("dark_background")
+            fig, ax = plt.subplots(figsize=(max(6, num_targets * 1.2), 3), dpi=90)
+            fig.patch.set_facecolor(COLORS["bg_card"])
+            ax.set_facecolor(COLORS["bg_card"])
+            r2_vals = [r[1] for r in rows]
+            colors  = [COLORS["green"] if r > 0.9 else COLORS["orange"] if r > 0.7 else COLORS["red"] for r in r2_vals]
+            ax.bar(self.out_cols, r2_vals, color=colors, alpha=0.8)
+            ax.axhline(0.9, color=COLORS["green"],  linestyle="--", linewidth=1, alpha=0.6, label="R²=0.9")
+            ax.axhline(0.7, color=COLORS["orange"], linestyle="--", linewidth=1, alpha=0.6, label="R²=0.7")
+            ax.set_ylim(0, 1.05)
+            ax.set_ylabel("R²", color=COLORS["text"])
+            ax.tick_params(colors=COLORS["text"])
+            for spine in ax.spines.values(): spine.set_color(COLORS["border"])
+            ax.set_title("R² per Target", color="white")
+            ax.legend(fontsize=9)
+            plt.tight_layout()
+            canvas = FigureCanvasTkAgg(fig, master=parent)
+            canvas.draw()
+            canvas.get_tk_widget().pack(fill="x", padx=20, pady=10)
+            plt.close(fig)
+
+    # ─── Worst Predictions ────────────────────────────────────────────────────
+
+    def _setup_worst_predictions(self, parent, top_n=20):
+        top = ctk.CTkFrame(parent, fg_color="transparent")
+        top.pack(fill="x", pady=5)
+        ctk.CTkLabel(top, text="Select Target:").pack(side="left", padx=10)
+        sel_var = ctk.StringVar(value=self.out_cols[0])
+        table_frame = ctk.CTkFrame(parent, fg_color="transparent")
+        table_frame.pack(fill="both", expand=True)
+        ctk.CTkComboBox(top, values=self.out_cols, variable=sel_var,
+                        command=lambda x: self._draw_worst(table_frame, x, self.out_cols.index(x), top_n)).pack(side="left", padx=10)
+        self._draw_worst(table_frame, self.out_cols[0], 0, top_n)
+
+    def _draw_worst(self, parent, col_name, idx, top_n):
+        for w in parent.winfo_children(): w.destroy()
+        yt = self.y_t[:, idx]
+        yp = self.y_p[:, idx]
+        abs_err = np.abs(yt - yp)
+        worst_idx = np.argsort(abs_err)[::-1][:top_n]
+
+        col_names = ["Sample #", "Actual", "Predicted", "Abs Error", "% Error"]
+
+        style = ttk.Style()
+        style.configure("Worst.Treeview",
+                        background="#1A1A2E", foreground=COLORS["text"],
+                        fieldbackground="#1A1A2E", rowheight=24, font=("Helvetica", 10))
+        style.configure("Worst.Treeview.Heading",
+                        background=COLORS["bg_card"], foreground=COLORS["orange"],
+                        font=("Helvetica", 10, "bold"), relief="flat")
+        style.map("Worst.Treeview", background=[("selected", COLORS["primary_dark"])])
+
+        container = tk.Frame(parent, bg="#1A1A2E")
+        container.pack(fill="both", expand=True, padx=10, pady=6)
+
+        tree = ttk.Treeview(container, columns=col_names, show="headings",
+                            style="Worst.Treeview", height=min(top_n, 15))
+        vsb = ttk.Scrollbar(container, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=vsb.set)
+        vsb.pack(side="right", fill="y")
+        tree.pack(fill="both", expand=True)
+
+        for cn in col_names:
+            tree.heading(cn, text=cn)
+            tree.column(cn, width=110, anchor="center")
+        tree.column("Sample #", width=80)
+
+        tree.tag_configure("high_err", foreground=COLORS["red"])
+        median_err = float(np.median(abs_err))
+
+        for rank, si in enumerate(worst_idx):
+            pct = abs(yt[si] - yp[si]) / (abs(yt[si]) + 1e-10) * 100
+            tag = "high_err" if abs_err[si] > 2 * median_err else ""
+            tree.insert("", "end",
+                        values=[si, f"{yt[si]:.4f}", f"{yp[si]:.4f}",
+                                f"{abs_err[si]:.4f}", f"{pct:.1f}%"],
+                        tags=(tag,))
+
+        # Scatter plot highlighting worst samples
+        plt.style.use("dark_background")
+        fig, ax = plt.subplots(figsize=(6, 3.5), dpi=90)
+        fig.patch.set_facecolor(COLORS["bg_card"])
+        ax.set_facecolor(COLORS["bg_card"])
+        ax.tick_params(colors=COLORS["text"])
+        for spine in ax.spines.values(): spine.set_color(COLORS["border"])
+
+        all_idx = np.arange(len(yt))
+        good_mask = np.ones(len(yt), dtype=bool)
+        good_mask[worst_idx] = False
+        ax.scatter(yt[good_mask], yp[good_mask], color=COLORS["cyan"], s=8, alpha=0.4, label="OK")
+        ax.scatter(yt[worst_idx], yp[worst_idx], color=COLORS["red"], s=20, alpha=0.9, label=f"Worst {top_n}", zorder=5)
+        mn, mx = min(yt.min(), yp.min()), max(yt.max(), yp.max())
+        ax.plot([mn, mx], [mn, mx], color=COLORS["green"], linestyle="--", linewidth=1)
+        ax.set_title(f"Pred vs Actual — {col_name} (worst highlighted)", color="white", fontsize=10)
+        ax.legend(fontsize=9)
+        plt.tight_layout()
+        canvas = FigureCanvasTkAgg(fig, master=parent)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill="x", padx=10, pady=6)
+        plt.close(fig)
+
+    # ─── SHAP Values ──────────────────────────────────────────────────────────
+
+    def _setup_shap(self, parent, model):
+        top = ctk.CTkFrame(parent, fg_color="transparent")
+        top.pack(fill="x", pady=5)
+
+        ctk.CTkLabel(top, text="Select Target:").pack(side="left", padx=10)
+        sel_var = ctk.StringVar(value=self.out_cols[0])
+        plot_frame = ctk.CTkFrame(parent, fg_color="transparent")
+        plot_frame.pack(fill="both", expand=True)
+
+        def run_shap(col_name):
+            self._draw_shap(plot_frame, model, col_name, self.out_cols.index(col_name))
+
+        ctk.CTkComboBox(top, values=self.out_cols, variable=sel_var,
+                        command=run_shap).pack(side="left", padx=10)
+        ctk.CTkButton(top, text="Compute SHAP", height=30,
+                      command=lambda: run_shap(sel_var.get())).pack(side="left", padx=10)
+        ctk.CTkLabel(top, text="(may take a few seconds)",
+                     text_color=COLORS["text_dim"], font=("Helvetica", 11)).pack(side="left")
+
+        ctk.CTkLabel(plot_frame,
+                     text="Click 'Compute SHAP' to generate feature importance.",
+                     text_color=COLORS["text_dim"], font=FONTS["header"]).pack(pady=40)
+
+    def _draw_shap(self, parent, model, col_name, output_idx):
+        for w in parent.winfo_children(): w.destroy()
+        ctk.CTkLabel(parent, text="Computing SHAP values...",
+                     text_color=COLORS["cyan"], font=FONTS["header"]).pack(pady=20)
+        parent.update()
+
+        try:
+            import shap
+        except ImportError:
+            for w in parent.winfo_children(): w.destroy()
+            ctk.CTkLabel(parent,
+                         text="SHAP library not installed.\nRun:  pip install shap",
+                         text_color=COLORS["orange"], font=FONTS["header"]).pack(pady=40)
+            return
+
+        try:
+            X_test    = get_state("X_test")
+            input_cols = get_state("input_columns")
+            pca_X     = get_state("pca_X")
+
+            # Use a background sample (max 100 rows) for the explainer
+            bg_size = min(100, len(X_test))
+            bg = X_test[:bg_size]
+
+            # Single-output wrapper so SHAP gets a 1-D prediction
+            def predict_fn(x):
+                raw = model.predict(x, verbose=0)
+                return raw[:, output_idx] if raw.ndim > 1 else raw
+
+            explainer = shap.KernelExplainer(predict_fn, bg)
+            sample_size = min(50, len(X_test))
+            shap_vals = explainer.shap_values(X_test[:sample_size], nsamples=80)
+
+            # If PCA was applied we have latent features, not original column names
+            if pca_X is not None:
+                feat_names = [f"PC{i+1}" for i in range(X_test.shape[1])]
+            else:
+                feat_names = input_cols if input_cols else [f"F{i}" for i in range(X_test.shape[1])]
+
+            shap_arr = np.array(shap_vals)
+            mean_abs = np.abs(shap_arr).mean(axis=0)
+            order    = np.argsort(mean_abs)[::-1]
+
+            for w in parent.winfo_children(): w.destroy()
+
+            plt.style.use("dark_background")
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, max(4, len(feat_names) * 0.4 + 1)), dpi=90)
+            fig.patch.set_facecolor(COLORS["bg_card"])
+
+            for ax in [ax1, ax2]:
+                ax.set_facecolor(COLORS["bg_card"])
+                ax.tick_params(colors=COLORS["text"], labelsize=9)
+                for spine in ax.spines.values(): spine.set_color(COLORS["border"])
+
+            # Bar chart (mean |SHAP|)
+            colors = [COLORS["cyan"] if i == order[0] else COLORS["magenta"]
+                      if i in order[:3] else COLORS["text_dim"] for i in range(len(feat_names))]
+            ax1.barh([feat_names[i] for i in order[::-1]],
+                     mean_abs[order[::-1]], color=colors[::-1], alpha=0.85)
+            ax1.set_xlabel("Mean |SHAP value|", color=COLORS["text"])
+            ax1.set_title(f"Feature Importance — {col_name}", color="white", fontsize=11)
+
+            # Beeswarm-style: SHAP value vs feature value (top 8)
+            top_feats = order[:8]
+            for rank, fi in enumerate(top_feats[::-1]):
+                sv = shap_arr[:, fi]
+                fv_norm = (X_test[:sample_size, fi] - X_test[:sample_size, fi].min()) / \
+                          (X_test[:sample_size, fi].max() - X_test[:sample_size, fi].min() + 1e-8)
+                y_jitter = rank + np.random.uniform(-0.25, 0.25, len(sv))
+                sc = ax2.scatter(sv, y_jitter, c=fv_norm, cmap="coolwarm", s=12, alpha=0.7)
+
+            ax2.set_yticks(range(len(top_feats)))
+            ax2.set_yticklabels([feat_names[i] for i in top_feats[::-1]], fontsize=9)
+            ax2.axvline(0, color=COLORS["text_dim"], linewidth=1, linestyle="--")
+            ax2.set_xlabel("SHAP value", color=COLORS["text"])
+            ax2.set_title("Top-8 SHAP Beeswarm", color="white", fontsize=11)
+            cbar = fig.colorbar(sc, ax=ax2, fraction=0.03, pad=0.02)
+            cbar.set_label("Feature value (norm)", color=COLORS["text"], fontsize=8)
+            cbar.ax.tick_params(colors=COLORS["text"], labelsize=7)
+
+            plt.tight_layout()
+            canvas = FigureCanvasTkAgg(fig, master=parent)
+            canvas.draw()
+            canvas.get_tk_widget().pack(fill="both", expand=True, pady=10)
+            plt.close(fig)
+
+        except Exception as e:
+            for w in parent.winfo_children(): w.destroy()
+            ctk.CTkLabel(parent, text=f"SHAP error: {e}",
+                         text_color=COLORS["red"], font=("Helvetica", 12)).pack(pady=20)
 
     def _setup_export(self, parent, model):
         # Create a DF for all predictions

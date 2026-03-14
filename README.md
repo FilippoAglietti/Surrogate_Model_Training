@@ -35,12 +35,12 @@ python app.py
 
 | Module | Description |
 |--------|-------------|
-| **📂 Data Loading** | Upload Excel/CSV, Multi-Output Selection, basic data stats |
-| **🔧 Preprocessing** | Train/Val/Test split, MinMax/Standard Scaling, **PCA for Inputs/Outputs**, Correlation Heatmaps |
-| **🏗 Model Builder** | Dynamic Multi-Output NN architecture, loss & optimizer config, live training dash |
-| **🔍 Hyperopt** | Threaded **Optuna** (TPE) automated search with Matplotlib history plots |
-| **📊 Results** | Dynamic Pred vs Actual grid plots, Test Index Series, Residuals, **Deployable Model Wrapper (.zip)** export |
-| **🔮 Inference** | **Interactive Sensitivity Analysis** (sliders + dynamic curves) & Batch Excel prediction |
+| **📂 Data Loading** | Upload Excel/CSV, **Scrollable Preview Table**, **Missing Values bar chart**, **Column type badges** (NUM/CAT/DATE), Multi-Output selection |
+| **🔧 Preprocessing** | Train/Val/Test split, MinMax/Standard Scaling, PCA for Inputs/Outputs, **Scree Plot**, **Combined Matrix** (scatter+corr+hist), **Box/Violin**, **KDE**, **Parallel Coordinates**, **Outlier Detection & Removal** |
+| **🏗 Model Builder** | Dynamic Multi-Output NN architecture, loss & optimizer config, **LR Scheduler** (CosineDecay / ExponentialDecay), **Model Summary panel**, live training dash |
+| **🔍 Hyperopt** | Threaded **Optuna** (TPE) automated search, **Best Trials Table**, **Param Importances**, **Parallel Coordinates**, **Contour Plot** |
+| **📊 Results** | Pred vs Actual, Test Index Series, Residuals, **Q-Q Plot**, **Per-Target Metrics table**, **Worst Predictions panel**, **SHAP feature importance**, Deployable Model Wrapper (.zip) |
+| **🔮 Inference** | **Interactive 1D Sensitivity** (sliders + curves), **2D Sensitivity Contour Grid** (select 1 output + up to 5 inputs → C(5,2) contour plots), Batch Excel prediction |
 
 ---
 
