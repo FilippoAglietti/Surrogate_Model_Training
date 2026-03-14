@@ -42,7 +42,13 @@ class AppState:
             "optuna_study": None,
             "train_losses": [],
             "val_losses": [],
-            "training_metrics": {}
+            "training_metrics": {},
+            # ── session management ──────────────────────────────────────
+            "session_name":          "Untitled Session",
+            "session_path":          None,
+            "session_unsaved":       False,
+            "session_last_saved_at": None,
+            "preprocessing_config":  None,
         }
         for k, v in defaults.items():
             if k not in cls._state:

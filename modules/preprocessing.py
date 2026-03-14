@@ -46,9 +46,84 @@ class PreprocessingFrame(ctk.CTkFrame):
         if not self.built_ui:
             self._build_ui()
             self.built_ui = True
+            # Restore widget values from a loaded session if available
+            cfg = get_state("preprocessing_config")
+            if cfg:
+                self._restore_widgets(cfg)
         if get_state("preprocessed"):
             self.proceed_btn.configure(state="normal")
             self.status_lbl.configure(text="✓ Data preprocessed and split.", text_color=COLORS["green"])
+
+    # ── Session helpers ────────────────────────────────────────────────────────
+
+    def get_session_config(self) -> dict:
+        """Snapshot current widget values for session serialization."""
+        return {
+            "scaling_method":  self.scaling_var.get(),
+            "scale_targets":   self.scale_tgt_var.get(),
+            "pca_x_enabled":   self.pca_x_var.get(),
+            "pca_x_components": self.pca_x_comp.get(),
+            "pca_y_enabled":   self.pca_y_var.get(),
+            "pca_y_components": self.pca_y_comp.get(),
+            "train_pct":       self.train_pct.get(),
+            "val_pct":         self.val_pct.get(),
+            "chart_combined":  self.chart_combined.get(),
+            "chart_box":       self.chart_box.get(),
+            "chart_kde":       self.chart_kde.get(),
+            "chart_parallel":  self.chart_parallel.get(),
+            "chart_outlier":   self.chart_outlier.get(),
+        }
+
+    def restore_from_session(self, cfg: dict) -> None:
+        """Build the UI if needed, then populate widgets from *cfg*."""
+        if not self.built_ui:
+            self._build_ui()
+            self.built_ui = True
+        self._restore_widgets(cfg)
+        if get_state("preprocessed"):
+            self.proceed_btn.configure(state="normal")
+            X_train = get_state("X_train")
+            X_val   = get_state("X_val")
+            X_test  = get_state("X_test")
+            n_tr = len(X_train) if X_train is not None else 0
+            n_va = len(X_val)   if X_val   is not None else 0
+            n_te = len(X_test)  if X_test  is not None else 0
+            self.status_lbl.configure(
+                text=f"✓ Restored: {n_tr} Train | {n_va} Val | {n_te} Test",
+                text_color=COLORS["green"],
+            )
+
+    def _restore_widgets(self, cfg: dict) -> None:
+        """Apply a preprocessing_config dict to all widget vars."""
+        if "scaling_method" in cfg:
+            self.scaling_var.set(cfg["scaling_method"])
+        if "scale_targets" in cfg:
+            self.scale_tgt_var.set(cfg["scale_targets"])
+        if "pca_x_enabled" in cfg:
+            self.pca_x_var.set(cfg["pca_x_enabled"])
+        if "pca_x_components" in cfg:
+            self.pca_x_comp.delete(0, "end")
+            self.pca_x_comp.insert(0, str(cfg["pca_x_components"]))
+        if "pca_y_enabled" in cfg:
+            self.pca_y_var.set(cfg["pca_y_enabled"])
+        if "pca_y_components" in cfg:
+            self.pca_y_comp.delete(0, "end")
+            self.pca_y_comp.insert(0, str(cfg["pca_y_components"]))
+        if "train_pct" in cfg:
+            self.train_pct.set(cfg["train_pct"])
+        if "val_pct" in cfg:
+            self.val_pct.set(cfg["val_pct"])
+        if "chart_combined" in cfg:
+            self.chart_combined.set(cfg["chart_combined"])
+        if "chart_box" in cfg:
+            self.chart_box.set(cfg["chart_box"])
+        if "chart_kde" in cfg:
+            self.chart_kde.set(cfg["chart_kde"])
+        if "chart_parallel" in cfg:
+            self.chart_parallel.set(cfg["chart_parallel"])
+        if "chart_outlier" in cfg:
+            self.chart_outlier.set(cfg["chart_outlier"])
+        self._update_splits()
 
     def _show_blocked(self, message):
         for w in self.content_frame.winfo_children():
@@ -347,6 +422,8 @@ class PreprocessingFrame(ctk.CTkFrame):
         set_state("scaler_X", scaler_X); set_state("scaler_y", scaler_y)
         set_state("pca_X", pca_X); set_state("pca_y", pca_y)
         set_state("preprocessed", True)
+        set_state("preprocessing_config", self.get_session_config())
+        set_state("session_unsaved", True)
 
         self.status_lbl.configure(
             text=f"✓ Split: {len(X_train)} Train | {len(X_val)} Val | {len(X_test)} Test",

@@ -120,6 +120,7 @@ class DataLoadingFrame(ctk.CTkFrame):
             set_state("df", df)
             set_state("data_loaded", True)
             set_state("preprocessed", False)
+            set_state("session_unsaved", True)
 
             self.status_lbl.configure(text=f"Loaded: {os.path.basename(filename)}", text_color=COLORS["green"])
             self.shape_lbl.configure(text=f"Rows: {df.shape[0]} | Columns: {df.shape[1]}")
@@ -305,5 +306,69 @@ class DataLoadingFrame(ctk.CTkFrame):
     def go_to_preprocessing(self):
         self.master.navigate_to("🔧  Preprocessing")
 
+    def restore_from_session(self, config: dict) -> None:
+        """Restore the Data Loading UI from AppState after a session load."""
+        df = get_state("df")
+        if df is None:
+            return
+
+        self.status_lbl.configure(
+            text="Loaded (from session)",
+            text_color=COLORS["green"],
+        )
+        self.shape_lbl.configure(text=f"Rows: {df.shape[0]} | Columns: {df.shape[1]}")
+
+        # Stats textbox
+        desc = df.describe().T
+        desc_str = desc[["min", "max", "mean", "std"]].round(3).to_string()
+        self.stats_box.configure(state="normal")
+        self.stats_box.delete("0.0", "end")
+        self.stats_box.insert("end", "--- DATASET STATISTICS ---\n" + desc_str)
+        self.stats_box.configure(state="disabled")
+
+        self._build_data_explorer(df)
+        self._col_dtypes = {col: self._get_col_type(df[col]) for col in df.columns}
+
+        input_cols  = config.get("input_columns",  [])
+        output_cols = config.get("output_column",  [])
+
+        for w in self.features_scroll.winfo_children(): w.destroy()
+        for w in self.targets_scroll.winfo_children():  w.destroy()
+        self.feature_vars.clear()
+        self.target_vars.clear()
+
+        for i, col in enumerate(df.columns):
+            col_type = self._col_dtypes[col]
+            badge_color = (
+                COLORS["cyan"]    if col_type == "NUM"  else
+                COLORS["orange"]  if col_type == "DATE" else
+                COLORS["red"]
+            )
+
+            t_row = ctk.CTkFrame(self.targets_scroll, fg_color="transparent")
+            t_row.grid(row=i, column=0, sticky="ew", pady=2)
+            t_var = ctk.StringVar(value="on" if col in output_cols else "off")
+            ctk.CTkCheckBox(t_row, text=col, variable=t_var, onvalue="on", offvalue="off",
+                            command=self.check_ready).pack(side="left", padx=5)
+            ctk.CTkLabel(t_row, text=col_type, font=("Helvetica", 10, "bold"),
+                         text_color=badge_color, width=38).pack(side="left")
+            self.target_vars[col] = t_var
+
+            f_row = ctk.CTkFrame(self.features_scroll, fg_color="transparent")
+            f_row.grid(row=i, column=0, sticky="ew", pady=2)
+            f_var = ctk.StringVar(value="on" if col in input_cols else "off")
+            ctk.CTkCheckBox(f_row, text=col, variable=f_var, onvalue="on", offvalue="off",
+                            command=self.check_ready).pack(side="left", padx=5)
+            ctk.CTkLabel(f_row, text=col_type, font=("Helvetica", 10, "bold"),
+                         text_color=badge_color, width=38).pack(side="left")
+            self.feature_vars[col] = f_var
+
+        self.check_ready()
+
     def on_show(self):
-        pass
+        # If data was restored from a session but widgets are empty, restore them
+        if get_state("data_loaded") and get_state("df") is not None and not self.feature_vars:
+            self.restore_from_session({
+                "input_columns": get_state("input_columns", []),
+                "output_column": get_state("output_column", []),
+            })

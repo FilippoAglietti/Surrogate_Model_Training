@@ -841,6 +841,7 @@ class ModelBuilderFrame(ctk.CTkFrame):
             self._log("\n[ ABORTED ] Training stopped by user.")
             self.train_lbl.configure(text="⚠ Training stopped.", text_color=COLORS["orange"])
         else:
+            set_state("session_unsaved", True)
             metrics = get_state("training_metrics") or {}
             r2 = metrics.get("r2", 0)
             self._log("\n[ OK ] Training Complete.")

@@ -378,6 +378,7 @@ class HyperoptFrame(ctk.CTkFrame):
             best_dict["__algo__"] = self.hpo_algo_var.get()
             set_state("applied_hpo_params", best_dict)
             set_state("selected_algo", self.hpo_algo_var.get())
+            set_state("session_unsaved", True)
             self._log("\n✨ Best parameters saved!\nGo to 'Model Builder' to see them applied.")
             self.apply_btn.configure(state="disabled", text="APPLIED")
 
