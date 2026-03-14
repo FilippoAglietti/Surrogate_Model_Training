@@ -16,6 +16,7 @@ from sklearn.metrics import mean_squared_error, r2_score
 
 from utils.theme import COLORS, FONTS
 from utils.state import set_state
+from utils.plot_utils import add_save_button
 
 class InferenceFrame(ctk.CTkFrame):
     def __init__(self, master, **kwargs):
@@ -46,8 +47,8 @@ class InferenceFrame(ctk.CTkFrame):
         self.tabview.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
 
         self.tabview.add("Batch Prediction (Excel)")
-        self.tabview.add("Interactive Sensitivity")
-        self.tabview.add("2D Sensitivity Contour")
+        self.tabview.add("1D Sensitivity")
+        self.tabview.add("2D Sensitivity")
         
         self.model = None
         self.meta = {}
@@ -201,7 +202,8 @@ class InferenceFrame(ctk.CTkFrame):
         cv1 = FigureCanvasTkAgg(fig, master=self.bp_plot_frame)
         cv1.draw()
         cv1.get_tk_widget().pack(fill="x", pady=20)
-        
+        add_save_button(self.bp_plot_frame, cv1, "batch_pred_vs_actual.png")
+
         # Pred vs Test Num Grid
         fig2, axes2 = plt.subplots(1, len(cols), figsize=(max(5*len(cols), 8), 4), dpi=100)
         fig2.patch.set_facecolor(COLORS["bg_card"])
@@ -222,6 +224,7 @@ class InferenceFrame(ctk.CTkFrame):
         cv2 = FigureCanvasTkAgg(fig2, master=self.bp_plot_frame)
         cv2.draw()
         cv2.get_tk_widget().pack(fill="x", pady=20)
+        add_save_button(self.bp_plot_frame, cv2, "batch_series.png")
 
     def _dl_batch(self):
         if self.bp_df_res is None: return
@@ -234,7 +237,7 @@ class InferenceFrame(ctk.CTkFrame):
     # ========================== SENSITIVITY ==========================
     
     def _setup_sensitivity_tab(self):
-        tab = self.tabview.tab("Interactive Sensitivity")
+        tab = self.tabview.tab("1D Sensitivity")
         for w in tab.winfo_children(): w.destroy()
         
         tab.grid_columnconfigure(0, weight=0) # Sliders
@@ -313,28 +316,32 @@ class InferenceFrame(ctk.CTkFrame):
         
         # Collect base point
         base_df = pd.DataFrame([{c: self._slider_vars[c][0].get() for c in inputs}])
-        
+        base_pred = self._predict_raw(base_df)[0]  # shape (n_outputs,)
+
         for i, inp_col in enumerate(inputs):
             ax = axes[i]
             ax.set_facecolor(COLORS["bg_card"])
             ax.tick_params(colors=COLORS["text"], labelsize=8)
             for spine in ax.spines.values(): spine.set_color(COLORS["border"])
-            
+
             # Generate 50 points for this input feature
             scan = np.linspace(self.meta["train_min"][inp_col], self.meta["train_max"][inp_col], 50)
-            
+
             # Construct scanning dataframe
             scan_df = pd.DataFrame(np.repeat(base_df.values, 50, axis=0), columns=inputs)
             scan_df[inp_col] = scan
-            
+
             # Predict
             y_scan = self._predict_raw(scan_df)
-            
-            # Plot each target line
+
+            # Plot each target line + base point marker
             colors = [COLORS["cyan"], COLORS["magenta"]]
+            base_x = base_df[inp_col].values[0]
             for t_idx, t_col in enumerate(out_cols):
                 ax.plot(scan, y_scan[:, t_idx], color=colors[t_idx % len(colors)], label=t_col, linewidth=2)
-                
+                ax.scatter([base_x], [base_pred[t_idx]],
+                           color="white", s=60, zorder=5, marker="x", linewidths=2)
+
             ax.set_title(inp_col, color="white", fontsize=10)
             if i == 0: ax.legend(fontsize=8)
             
@@ -346,11 +353,12 @@ class InferenceFrame(ctk.CTkFrame):
         self.sens_canvas = FigureCanvasTkAgg(fig, master=self.sens_plot_frame)
         self.sens_canvas.draw()
         self.sens_canvas.get_tk_widget().pack(fill="both", expand=True, pady=10)
+        add_save_button(self.sens_plot_frame, self.sens_canvas, "1d_sensitivity.png")
 
     # ========================== 2D SENSITIVITY CONTOUR ==========================
 
     def _setup_2d_sensitivity_tab(self):
-        tab = self.tabview.tab("2D Sensitivity Contour")
+        tab = self.tabview.tab("2D Sensitivity")
         for w in tab.winfo_children(): w.destroy()
 
         inputs     = self.meta["input_columns"]
@@ -573,6 +581,7 @@ class InferenceFrame(ctk.CTkFrame):
             canvas = FigureCanvasTkAgg(fig, master=self._2d_plot_frame)
             canvas.draw()
             canvas.get_tk_widget().pack(fill="both", expand=True)
+            add_save_button(self._2d_plot_frame, canvas, "2d_sensitivity.png")
             plt.close(fig)
 
             self._2d_status_lbl.configure(

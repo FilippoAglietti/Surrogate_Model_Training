@@ -16,6 +16,7 @@ import os
 
 from utils.theme import COLORS, FONTS
 from utils.state import get_state
+from utils.plot_utils import add_save_button
 
 
 class ResultsFrame(ctk.CTkFrame):
@@ -189,6 +190,7 @@ class ResultsFrame(ctk.CTkFrame):
         canvas = FigureCanvasTkAgg(fig, master=parent)
         canvas.draw()
         canvas.get_tk_widget().pack(fill="both", expand=True, pady=10)
+        add_save_button(parent, canvas, "pred_vs_actual.png")
 
     def _draw_single_pred(self, parent, col_name, idx):
         for w in parent.winfo_children(): w.destroy()
@@ -211,7 +213,8 @@ class ResultsFrame(ctk.CTkFrame):
         canvas = FigureCanvasTkAgg(fig, master=parent)
         canvas.draw()
         canvas.get_tk_widget().pack(fill="both", expand=True, pady=10)
-        
+        add_save_button(parent, canvas, "pred_vs_actual_single.png")
+
     def _setup_series(self, parent):
         num_targets = len(self.out_cols)
         
@@ -253,6 +256,7 @@ class ResultsFrame(ctk.CTkFrame):
         canvas = FigureCanvasTkAgg(fig, master=parent)
         canvas.draw()
         canvas.get_tk_widget().pack(fill="both", expand=True, pady=10)
+        add_save_button(parent, canvas, "test_series.png")
 
     def _setup_residuals(self, parent):
         plot_frame = ctk.CTkFrame(parent, fg_color="transparent")
@@ -294,6 +298,7 @@ class ResultsFrame(ctk.CTkFrame):
         canvas = FigureCanvasTkAgg(fig, master=parent)
         canvas.draw()
         canvas.get_tk_widget().pack(fill="both", expand=True, pady=10)
+        add_save_button(parent, canvas, "residuals.png")
 
     # ─── Q-Q Plot ─────────────────────────────────────────────────────────────
 
@@ -344,6 +349,7 @@ class ResultsFrame(ctk.CTkFrame):
         canvas = FigureCanvasTkAgg(fig, master=parent)
         canvas.draw()
         canvas.get_tk_widget().pack(fill="both", expand=True, pady=10)
+        add_save_button(parent, canvas, "qq_plot.png")
         plt.close(fig)
 
     # ─── Per-Target Metrics ───────────────────────────────────────────────────
@@ -417,6 +423,7 @@ class ResultsFrame(ctk.CTkFrame):
             canvas = FigureCanvasTkAgg(fig, master=parent)
             canvas.draw()
             canvas.get_tk_widget().pack(fill="x", padx=20, pady=10)
+            add_save_button(parent, canvas, "r2_per_target.png")
             plt.close(fig)
 
     # ─── Worst Predictions ────────────────────────────────────────────────────
@@ -497,6 +504,7 @@ class ResultsFrame(ctk.CTkFrame):
         canvas = FigureCanvasTkAgg(fig, master=parent)
         canvas.draw()
         canvas.get_tk_widget().pack(fill="x", padx=10, pady=6)
+        add_save_button(parent, canvas, "worst_predictions.png")
         plt.close(fig)
 
     # ─── SHAP Values ──────────────────────────────────────────────────────────
@@ -608,6 +616,7 @@ class ResultsFrame(ctk.CTkFrame):
             canvas = FigureCanvasTkAgg(fig, master=parent)
             canvas.draw()
             canvas.get_tk_widget().pack(fill="both", expand=True, pady=10)
+            add_save_button(parent, canvas, "shap_values.png")
             plt.close(fig)
 
         except Exception as e:

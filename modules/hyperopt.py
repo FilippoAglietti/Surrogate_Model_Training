@@ -19,6 +19,7 @@ from optuna.visualization.matplotlib import (
 from modules.model_builder import build_surrogate_model, get_keras_loss, get_keras_optimizer
 from utils.theme import COLORS, FONTS
 from utils.state import get_state, set_state
+from utils.plot_utils import add_save_button
 
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 
@@ -304,12 +305,13 @@ class HyperoptFrame(ctk.CTkFrame):
         self._draw_parallel_coords(self.results_tabview.tab("Parallel Coords"), study)
         self._draw_contour_plot(self.results_tabview.tab("Contour Plot"), study)
 
-    def _embed_fig(self, parent, fig):
+    def _embed_fig(self, parent, fig, default_name="plot.png"):
         for w in parent.winfo_children():
             w.destroy()
         canvas = FigureCanvasTkAgg(fig, master=parent)
         canvas.draw()
         canvas.get_tk_widget().pack(fill="both", expand=True)
+        add_save_button(parent, canvas, default_name)
         plt.close(fig)
 
     def _draw_opt_history(self, parent, study):
@@ -323,7 +325,7 @@ class HyperoptFrame(ctk.CTkFrame):
             fig.patch.set_facecolor(COLORS["bg_card"])
             ax.set_facecolor(COLORS["bg_card"])
             fig.tight_layout()
-            self._embed_fig(parent, fig)
+            self._embed_fig(parent, fig, "hpo_optimization_history.png")
         except Exception as e:
             ctk.CTkLabel(parent, text=f"Plot error: {e}", text_color=COLORS["red"]).pack(pady=20)
 
@@ -397,7 +399,7 @@ class HyperoptFrame(ctk.CTkFrame):
             fig.patch.set_facecolor(COLORS["bg_card"])
             ax.set_facecolor(COLORS["bg_card"])
             fig.tight_layout()
-            self._embed_fig(parent, fig)
+            self._embed_fig(parent, fig, "hpo_param_importances.png")
         except Exception as e:
             ctk.CTkLabel(parent, text=f"Importances error: {e}", text_color=COLORS["red"]).pack(pady=20)
 
@@ -415,7 +417,7 @@ class HyperoptFrame(ctk.CTkFrame):
             fig.set_size_inches(9, 3.5)
             fig.patch.set_facecolor(COLORS["bg_card"])
             fig.tight_layout()
-            self._embed_fig(parent, fig)
+            self._embed_fig(parent, fig, "hpo_parallel_coords.png")
         except Exception as e:
             ctk.CTkLabel(parent, text=f"Parallel coords error: {e}", text_color=COLORS["red"]).pack(pady=20)
 
@@ -439,7 +441,7 @@ class HyperoptFrame(ctk.CTkFrame):
             fig.set_size_inches(7, 4)
             fig.patch.set_facecolor(COLORS["bg_card"])
             fig.tight_layout()
-            self._embed_fig(parent, fig)
+            self._embed_fig(parent, fig, "hpo_contour.png")
         except Exception as e:
             ctk.CTkLabel(parent, text=f"Contour error: {e}", text_color=COLORS["red"]).pack(pady=20)
 

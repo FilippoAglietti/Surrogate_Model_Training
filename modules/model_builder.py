@@ -2,6 +2,7 @@ import customtkinter as ctk
 
 from utils.theme import COLORS, FONTS
 from utils.state import get_state, set_state
+from utils.plot_utils import add_save_button
 
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
@@ -307,7 +308,7 @@ class ModelBuilderFrame(ctk.CTkFrame):
 
         # Callbacks Row 2
         self.use_reduce_lr = ctk.BooleanVar(value=True)
-        ctk.CTkCheckBox(compile_card, text="Reduce LR", variable=self.use_reduce_lr).grid(row=8, column=0, padx=20, pady=(0, 20), sticky="w")
+        ctk.CTkCheckBox(compile_card, text="Reduce LR on Plateau", variable=self.use_reduce_lr).grid(row=8, column=0, padx=20, pady=(0, 20), sticky="w")
 
         ctk.CTkLabel(compile_card, text="LR Factor").grid(row=8, column=1, padx=10, sticky="w")
         self.lr_factor_e = ctk.CTkEntry(compile_card)
@@ -375,7 +376,7 @@ class ModelBuilderFrame(ctk.CTkFrame):
         self.pb.pack(side="right")
 
         # ── Matplotlib Plot ──
-        self.plot_frame = ctk.CTkFrame(self.content_frame, fg_color="#000", height=280)
+        self.plot_frame = ctk.CTkFrame(self.content_frame, fg_color="#000", height=310)
         self.plot_frame.grid(row=3, column=0, sticky="ew", padx=20, pady=5)
         self.plot_frame.grid_propagate(False)
 
@@ -548,6 +549,7 @@ class ModelBuilderFrame(ctk.CTkFrame):
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.plot_frame)
         self.canvas.draw()
         self.canvas.get_tk_widget().pack(fill="both", expand=True)
+        add_save_button(self.plot_frame, self.canvas, "training_loss.png")
 
     def _update_plot(self, t_losses, v_losses):
         x = range(1, len(t_losses) + 1)

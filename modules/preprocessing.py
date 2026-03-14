@@ -15,6 +15,7 @@ from sklearn.decomposition import PCA
 
 from utils.theme import COLORS, FONTS
 from utils.state import get_state, set_state
+from utils.plot_utils import add_save_button
 
 
 class PreprocessingFrame(ctk.CTkFrame):
@@ -65,7 +66,6 @@ class PreprocessingFrame(ctk.CTkFrame):
         # Refresh plot_frame
         self.plot_frame = ctk.CTkFrame(self.content_frame, fg_color=COLORS["bg_card"])
         self.plot_frame.grid(row=3, column=0, sticky="nsew", pady=20, padx=20)
-        self.plot_frame.pack_propagate(False)
 
         # ── Settings panel ─────────────────────────────────────────────────
         settings = ctk.CTkFrame(self.content_frame, fg_color=COLORS["bg_card"])
@@ -266,10 +266,10 @@ class PreprocessingFrame(ctk.CTkFrame):
         win = tk.Toplevel()
         win.title(f"Scree Plot — {label}")
         win.configure(bg=COLORS["bg_card"])
-        win.geometry("600x400")
+        win.geometry("820x580")
 
         plt.style.use("dark_background")
-        fig, ax = plt.subplots(figsize=(6, 3.8), dpi=100)
+        fig, ax = plt.subplots(figsize=(8.2, 5.0), dpi=100)
         fig.patch.set_facecolor(COLORS["bg_card"])
         ax.set_facecolor(COLORS["bg_card"])
 
@@ -293,6 +293,7 @@ class PreprocessingFrame(ctk.CTkFrame):
         canvas = FigureCanvasTkAgg(fig, master=win)
         canvas.draw()
         canvas.get_tk_widget().pack(fill="both", expand=True)
+        add_save_button(win, canvas, "scree_plot.png")
 
     # ─── core preprocessing ───────────────────────────────────────────────────
 
@@ -352,8 +353,25 @@ class PreprocessingFrame(ctk.CTkFrame):
             text_color=COLORS["green"])
         self.proceed_btn.configure(state="normal")
 
-        # 4. Draw selected plots on original (un-PCA'd) data
-        self._draw_all_plots(df, input_cols, output_cols)
+        # 4. Draw selected plots (PCA-space if PCA was applied, otherwise original)
+        if self.pca_x_var.get() and pca_X is not None:
+            pc_x_cols = [f"PC_X_{i+1}" for i in range(X.shape[1])]
+            plot_input_df = pd.DataFrame(X, columns=pc_x_cols)
+            plot_input_cols = pc_x_cols
+        else:
+            plot_input_df = df[input_cols].reset_index(drop=True)
+            plot_input_cols = input_cols
+
+        if self.pca_y_var.get() and pca_y is not None:
+            pc_y_cols = [f"PC_Y_{i+1}" for i in range(y.shape[1])]
+            plot_output_df = pd.DataFrame(y, columns=pc_y_cols)
+            plot_output_cols = pc_y_cols
+        else:
+            plot_output_df = df[output_cols].reset_index(drop=True)
+            plot_output_cols = output_cols
+
+        plot_df = pd.concat([plot_input_df, plot_output_df], axis=1)
+        self._draw_all_plots(plot_df, plot_input_cols, plot_output_cols)
 
     # ─── plot dispatcher ──────────────────────────────────────────────────────
 
@@ -373,7 +391,7 @@ class PreprocessingFrame(ctk.CTkFrame):
                          font=FONTS["header"]).pack(pady=30)
             return
 
-        tab_h = 580 if len(tabs_to_make) > 1 else 520
+        tab_h = 780 if len(tabs_to_make) > 1 else 700
         tv = ctk.CTkTabview(self.plot_frame, fg_color=COLORS["bg"], height=tab_h)
         tv.pack(fill="both", expand=True, padx=10, pady=10)
 
@@ -466,6 +484,7 @@ class PreprocessingFrame(ctk.CTkFrame):
         canvas = FigureCanvasTkAgg(fig, master=parent)
         canvas.draw()
         canvas.get_tk_widget().pack(fill="both", expand=True)
+        add_save_button(parent, canvas, "combined_matrix.png")
         plt.close(fig)
 
     # ─── Box / Violin ─────────────────────────────────────────────────────────
@@ -522,6 +541,7 @@ class PreprocessingFrame(ctk.CTkFrame):
         canvas = FigureCanvasTkAgg(fig, master=parent)
         canvas.draw()
         canvas.get_tk_widget().pack(fill="both", expand=True)
+        add_save_button(parent, canvas, "box_violin.png")
         plt.close(fig)
 
     # ─── KDE Distributions ────────────────────────────────────────────────────
@@ -573,6 +593,7 @@ class PreprocessingFrame(ctk.CTkFrame):
         canvas = FigureCanvasTkAgg(fig, master=parent)
         canvas.draw()
         canvas.get_tk_widget().pack(fill="both", expand=True)
+        add_save_button(parent, canvas, "kde_distributions.png")
         plt.close(fig)
 
     # ─── Parallel Coordinates ─────────────────────────────────────────────────
@@ -635,6 +656,7 @@ class PreprocessingFrame(ctk.CTkFrame):
         canvas = FigureCanvasTkAgg(fig, master=parent)
         canvas.draw()
         canvas.get_tk_widget().pack(fill="both", expand=True)
+        add_save_button(parent, canvas, "parallel_coordinates.png")
         plt.close(fig)
 
     # ─── Outlier Detection ────────────────────────────────────────────────────
@@ -717,6 +739,7 @@ class PreprocessingFrame(ctk.CTkFrame):
         canvas = FigureCanvasTkAgg(fig, master=parent)
         canvas.draw()
         canvas.get_tk_widget().pack(fill="both", expand=True, padx=10, pady=4)
+        add_save_button(parent, canvas, "outlier_detection.png")
         plt.close(fig)
 
     # ─── navigation ───────────────────────────────────────────────────────────

@@ -36,11 +36,11 @@ python app.py
 | Module | Description |
 |--------|-------------|
 | **📂 Data Loading** | Upload Excel/CSV, **Scrollable Preview Table**, **Missing Values bar chart**, **Column type badges** (NUM/CAT/DATE), Multi-Output selection |
-| **🔧 Preprocessing** | Train/Val/Test split, MinMax/Standard Scaling, PCA for Inputs/Outputs, **Scree Plot**, **Combined Matrix** (scatter+corr+hist), **Box/Violin**, **KDE**, **Parallel Coordinates**, **Outlier Detection & Removal** |
-| **🏗 Model Builder** | Dynamic Multi-Output NN architecture, loss & optimizer config, **LR Scheduler** (CosineDecay / ExponentialDecay), **Model Summary panel**, live training dash |
-| **🔍 Hyperopt** | Threaded **Optuna** (TPE) automated search, **Best Trials Table**, **Param Importances**, **Parallel Coordinates**, **Contour Plot** |
-| **📊 Results** | Pred vs Actual, Test Index Series, Residuals, **Q-Q Plot**, **Per-Target Metrics table**, **Worst Predictions panel**, **SHAP feature importance**, Deployable Model Wrapper (.zip) |
-| **🔮 Inference** | **Interactive 1D Sensitivity** (sliders + curves), **2D Sensitivity Contour Grid** (select 1 output + up to 5 inputs → C(5,2) contour plots), Batch Excel prediction |
+| **🔧 Preprocessing** | Train/Val/Test split, MinMax/Standard Scaling, PCA for Inputs/Outputs, **Scree Plot**, **Combined Matrix** (scatter+corr+hist), **Box/Violin**, **KDE**, **Parallel Coordinates**, **Outlier Detection & Removal**, **💾 Save Image** on every chart |
+| **🏗 Model Builder** | Dynamic Multi-Output NN architecture, loss & optimizer config, **LR Scheduler** (CosineDecay / ExponentialDecay), **Reduce LR on Plateau**, **Model Summary panel**, live training dash, **💾 Save training curve** |
+| **🔍 Hyperopt** | Threaded **Optuna** (TPE) automated search, **Best Trials Table**, **Param Importances**, **Parallel Coordinates**, **Contour Plot**, **💾 Save Image** on every chart |
+| **📊 Results** | Pred vs Actual, Test Index Series, Residuals, **Q-Q Plot**, **Per-Target Metrics table**, **Worst Predictions panel**, **SHAP feature importance**, Deployable Model Wrapper (.zip), **💾 Save Image** on every chart |
+| **🔮 Inference** | **1D Sensitivity** (sliders + curves + base-point marker), **2D Sensitivity Contour Grid** (select 1 output + up to 5 inputs → C(5,2) contour plots), Batch Excel prediction, **💾 Save Image** on every chart |
 
 ---
 
@@ -56,7 +56,8 @@ Surrogate_Model_Training/
 ├── generate_multi_dataset.py   # Generates a test multi-output dataset
 ├── utils/
 │   ├── theme.py                # Global styling constants
-│   └── state.py                # Singleton application state dictionary
+│   ├── state.py                # Singleton application state dictionary
+│   └── plot_utils.py           # Shared "Save Image" button helper
 └── modules/
     ├── data_loading.py
     ├── preprocessing.py
