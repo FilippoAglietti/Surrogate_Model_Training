@@ -219,11 +219,9 @@ class PreprocessingFrame(ctk.CTkFrame):
             X, y, test_size=(1.0 - train_p), random_state=42
         )
         relative_val = val_p / (val_p + test_p)
-        X_val, X_test, y_val, y_test, df_train, df_temp = train_test_split(
-            X_temp, y_temp, df.drop(df.index[:len(X_train)]), test_size=(1.0 - relative_val), random_state=42
+        X_val, X_test, y_val, y_test = train_test_split(
+            X_temp, y_temp, test_size=(1.0 - relative_val), random_state=42
         )
-        # We don't save the split DFs properly because we scaled X and Y.
-        # But wait, we just need the preprocessed matrices.
         
         # Save state for TF
         set_state("X_train", X_train)

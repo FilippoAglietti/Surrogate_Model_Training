@@ -1,6 +1,5 @@
 """
-Centralized state management for Tkinter.
-Replaces Streamlit's session_state.
+Centralized state management for the CustomTkinter application.
 """
 
 class AppState:
@@ -29,6 +28,9 @@ class AppState:
             "y_train": None, "y_val": None, "y_test": None,
             "scaler_X": None,
             "scaler_y": None,
+            "pca_X": None,
+            "pca_y": None,
+            "applied_hpo_params": None,
             "layers_config": [{"units": 64, "activation": "ReLU", "dropout": 0.0}],
             "model_config": None,
             "model_params_count": 0,

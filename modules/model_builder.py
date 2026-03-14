@@ -11,7 +11,6 @@ from tensorflow.keras.callbacks import Callback, EarlyStopping, ReduceLROnPlatea
 import numpy as np
 import threading
 import queue
-import queue
 import time
 import matplotlib
 matplotlib.use("TkAgg")
@@ -408,7 +407,9 @@ class ModelBuilderFrame(ctk.CTkFrame):
         set_state("model_config", model_config)
         set_state("trained", False)
 
-        temp_model = build_surrogate_model(input_dim, 1, num_layers, neurons, act_hidden, act_out, dropout, l1_val, l2_val)
+        y_train = get_state("y_train")
+        output_dim = y_train.shape[1] if len(y_train.shape) > 1 else 1
+        temp_model = build_surrogate_model(input_dim, output_dim, num_layers, neurons, act_hidden, act_out, dropout, l1_val, l2_val)
         set_state("model_params_count", temp_model.count_params())
 
         self.train_lbl.configure(text=f"✓ Built: {num_layers}x{neurons} [{temp_model.count_params()} params]", text_color=COLORS["green"])

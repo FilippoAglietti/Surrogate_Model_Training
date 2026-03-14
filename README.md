@@ -48,20 +48,22 @@ python app.py
 
 ```
 Surrogate_Model_Training/
-├── app.py                  # Main CustomTkinter Application
-├── run.bat                 # Windows auto-venv launcher
-├── requirements.txt        # Dependencies
-├── generate_multi_dataset.py # Script to create a test multi-output dataset
+├── app.py                      # Main CustomTkinter Application
+├── run.bat                     # Windows auto-venv launcher
+├── requirements.txt            # Dependencies
+├── smoke_test.py               # Integration test (single-output, multi-output, regularization)
+├── generate_dataset.py         # Generates Friedman benchmark datasets (single-output)
+├── generate_multi_dataset.py   # Generates a test multi-output dataset
 ├── utils/
-│   ├── theme.py            # Global styling constants
-│   └── state.py            # Singleton application state dictionary
+│   ├── theme.py                # Global styling constants
+│   └── state.py                # Singleton application state dictionary
 └── modules/
-    ├── data_loading.py     
-    ├── preprocessing.py    
-    ├── model_builder.py    
-    ├── hyperopt.py         
-    ├── results.py         
-    └── inference.py        
+    ├── data_loading.py
+    ├── preprocessing.py
+    ├── model_builder.py
+    ├── hyperopt.py
+    ├── results.py
+    └── inference.py
 ```
 
 ## 📄 License
