@@ -97,6 +97,15 @@ def save_session(path: str) -> None:
             os.makedirs(data_dir)
             df.to_csv(os.path.join(data_dir, "dataframe.csv"), index=False)
 
+            # Preprocessing plot data (used to restore charts without re-running)
+            plot_df = get_state("plot_df")
+            if plot_df is not None:
+                plot_df.to_csv(os.path.join(data_dir, "plot_df.csv"), index=False)
+                _write_json(os.path.join(data_dir, "plot_cols.json"), {
+                    "plot_input_cols":  get_state("plot_input_cols",  []),
+                    "plot_output_cols": get_state("plot_output_cols", []),
+                })
+
         # ── splits/ ───────────────────────────────────────────────────────
         split_arrays = {
             k: get_state(k)
@@ -206,6 +215,16 @@ def load_session(path: str) -> dict:
         csv_path = os.path.join(tmpdir, "data", "dataframe.csv")
         if os.path.isfile(csv_path):
             set_state("df", pd.read_csv(csv_path))
+
+        plot_csv = os.path.join(tmpdir, "data", "plot_df.csv")
+        if os.path.isfile(plot_csv):
+            set_state("plot_df", pd.read_csv(plot_csv))
+            plot_cols_path = os.path.join(tmpdir, "data", "plot_cols.json")
+            if os.path.isfile(plot_cols_path):
+                with open(plot_cols_path) as f:
+                    pc = json.load(f)
+                set_state("plot_input_cols",  pc.get("plot_input_cols",  []))
+                set_state("plot_output_cols", pc.get("plot_output_cols", []))
 
         # ── splits/ ───────────────────────────────────────────────────────
         npz_path = os.path.join(tmpdir, "splits", "arrays.npz")

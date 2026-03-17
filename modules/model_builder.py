@@ -146,6 +146,9 @@ class ModelBuilderFrame(ctk.CTkFrame):
         if not self.built_ui:
             self._build_ui()
             self.built_ui = True
+            # Restore training visualisation from a loaded session
+            if get_state("trained") and not self.is_running:
+                self._draw_static_training_result()
 
         # External algo change requested by Hyperopt "Apply Best"
         target_algo = get_state("selected_algo")
@@ -858,6 +861,55 @@ class ModelBuilderFrame(ctk.CTkFrame):
                              font=FONTS["title"], text_color=COLORS["green"]).pack(expand=True)
 
     # ── Plot helpers ──────────────────────────────────────────────────────────
+
+    def _draw_static_training_result(self):
+        """Re-draw the training result area from saved state (after session load)."""
+        train_losses = get_state("train_losses", [])
+        val_losses   = get_state("val_losses",   [])
+        metrics      = get_state("training_metrics") or {}
+        r2           = metrics.get("r2", 0)
+        surrogate    = get_state("surrogate_model")
+        algo         = surrogate.algo_name if surrogate else self.selected_algo
+
+        for w in self.plot_frame.winfo_children():
+            w.destroy()
+
+        if train_losses:
+            # NN path: draw loss curves
+            plt.style.use("dark_background")
+            fig, ax = plt.subplots(figsize=(8, 3), dpi=100)
+            fig.patch.set_facecolor(COLORS["bg_card"])
+            ax.set_facecolor(COLORS["bg_card"])
+            ax.set_xlabel("Epoch", color=COLORS["text"])
+            ax.set_ylabel("Loss",  color=COLORS["text"])
+            ax.plot(range(1, len(train_losses) + 1), train_losses,
+                    color=COLORS["cyan"],   label="Train Loss", linewidth=1.5)
+            ax.plot(range(1, len(val_losses)   + 1), val_losses,
+                    color=COLORS["orange"], label="Val Loss",   linewidth=1.5)
+            ax.legend()
+            ax.set_title("Training History (restored from session)",
+                         color=COLORS["text_dim"], fontsize=9)
+            for spine in ax.spines.values(): spine.set_color(COLORS["border"])
+            ax.tick_params(colors=COLORS["text"])
+            fig.tight_layout()
+            canvas = FigureCanvasTkAgg(fig, master=self.plot_frame)
+            canvas.draw()
+            canvas.get_tk_widget().pack(fill="both", expand=True)
+            add_save_button(self.plot_frame, canvas, "training_history.png")
+        else:
+            # Sklearn path: show status text
+            ctk.CTkLabel(
+                self.plot_frame,
+                text=f"✓ {algo} trained  |  Val R²: {r2:.4f}",
+                font=FONTS["title"], text_color=COLORS["green"],
+            ).pack(expand=True)
+
+        # Restore train label
+        self.train_lbl.configure(
+            text=f"✓ Restored  |  {algo}  |  Val R²: {r2:.4f}",
+            text_color=COLORS["green"],
+        )
+        self.pb.set(1.0)
 
     def _init_plot(self):
         for w in self.plot_frame.winfo_children():

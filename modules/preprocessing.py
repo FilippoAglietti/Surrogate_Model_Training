@@ -92,6 +92,15 @@ class PreprocessingFrame(ctk.CTkFrame):
                 text=f"✓ Restored: {n_tr} Train | {n_va} Val | {n_te} Test",
                 text_color=COLORS["green"],
             )
+            self._restore_plots()
+
+    def _restore_plots(self) -> None:
+        """Re-draw preprocessing plots from saved state data."""
+        plot_df        = get_state("plot_df")
+        plot_in_cols   = get_state("plot_input_cols")
+        plot_out_cols  = get_state("plot_output_cols")
+        if plot_df is not None and plot_in_cols and plot_out_cols:
+            self._draw_all_plots(plot_df, plot_in_cols, plot_out_cols)
 
     def _restore_widgets(self, cfg: dict) -> None:
         """Apply a preprocessing_config dict to all widget vars."""
@@ -448,6 +457,9 @@ class PreprocessingFrame(ctk.CTkFrame):
             plot_output_cols = output_cols
 
         plot_df = pd.concat([plot_input_df, plot_output_df], axis=1)
+        set_state("plot_df", plot_df)
+        set_state("plot_input_cols", plot_input_cols)
+        set_state("plot_output_cols", plot_output_cols)
         self._draw_all_plots(plot_df, plot_input_cols, plot_output_cols)
 
     # ─── plot dispatcher ──────────────────────────────────────────────────────

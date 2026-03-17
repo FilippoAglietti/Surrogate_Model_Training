@@ -18,7 +18,7 @@ class App(ctk.CTk):
         super().__init__()
 
         # Initialize app settings
-        self.title("Surrogate Builder v2.0")
+        self.title("Surrogate Builder v4.0")
         self.geometry("1400x900")
         self.minsize(1000, 700)
 
@@ -81,7 +81,7 @@ class App(ctk.CTk):
         # Status label
         self.status_label = ctk.CTkLabel(
             self.sidebar_frame,
-            text="v2.0 · CustomTkinter",
+            text="v4.0 · CustomTkinter",
             font=("Consolas", 10),
             text_color=COLORS["text_dim"]
         )

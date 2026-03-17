@@ -43,6 +43,10 @@ class AppState:
             "train_losses": [],
             "val_losses": [],
             "training_metrics": {},
+            # ── preprocessing plots ─────────────────────────────────────
+            "plot_df":           None,
+            "plot_input_cols":   [],
+            "plot_output_cols":  [],
             # ── session management ──────────────────────────────────────
             "session_name":          "Untitled Session",
             "session_path":          None,
