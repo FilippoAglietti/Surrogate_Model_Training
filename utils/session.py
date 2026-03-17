@@ -72,9 +72,10 @@ def save_session(path: str) -> None:
                 "val_losses":        get_state("val_losses",       []),
                 "training_metrics":  get_state("training_metrics", {}),
                 "best_params":       get_state("best_params"),
-                "layers_config":     get_state("layers_config"),
-                "model_config":      get_state("model_config"),
-                "model_params_count": get_state("model_params_count", 0),
+                "layers_config":        get_state("layers_config"),
+                "model_config":         get_state("model_config"),
+                "model_builder_config": get_state("model_builder_config"),
+                "model_params_count":   get_state("model_params_count", 0),
             },
             "preprocessing_config": get_state("preprocessing_config"),
         }

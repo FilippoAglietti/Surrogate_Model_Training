@@ -146,9 +146,16 @@ class ModelBuilderFrame(ctk.CTkFrame):
         if not self.built_ui:
             self._build_ui()
             self.built_ui = True
-            # Restore training visualisation from a loaded session
+            # Restore widget values from session (switches algo quietly, no state reset)
+            mb_cfg = get_state("model_builder_config")
+            if mb_cfg:
+                self.restore_from_session(mb_cfg)
+            # Re-enable train button and redraw result if already trained
             if get_state("trained") and not self.is_running:
+                self.train_btn.configure(state="normal")
                 self._draw_static_training_result()
+            elif get_state("model_ready"):
+                self.train_btn.configure(state="normal")
 
         # External algo change requested by Hyperopt "Apply Best"
         target_algo = get_state("selected_algo")
@@ -161,6 +168,133 @@ class ModelBuilderFrame(ctk.CTkFrame):
         if applied:
             self._apply_hpo_params(applied)
             set_state("applied_hpo_params", None)
+
+    # ── Session helpers ───────────────────────────────────────────────────────
+
+    def get_session_config(self) -> dict:
+        """Snapshot all current widget values for session serialization."""
+        cfg = {"algo": self.selected_algo}
+        if self.selected_algo == "Neural Network":
+            cfg.update({
+                "num_layers":     self.num_layers_entry.get(),
+                "neurons":        self.neurons_entry.get(),
+                "act_hidden":     self.act_var.get(),
+                "act_out":        self.out_act_var.get(),
+                "dropout":        self.dropout_entry.get(),
+                "l1":             self.l1_entry.get(),
+                "l2":             self.l2_entry.get(),
+                "loss":           self.loss_var.get(),
+                "optimizer":      self.optim_var.get(),
+                "lr":             self.lr_entry.get(),
+                "batch_size":     self.bs_entry.get(),
+                "epochs":         self.ep_entry.get(),
+                "use_es":         self.use_es.get(),
+                "es_patience":    self.es_pat_e.get(),
+                "es_min_delta":   self.es_del_e.get(),
+                "use_reduce_lr":  self.use_reduce_lr.get(),
+                "lr_factor":      self.lr_factor_e.get(),
+                "lr_patience":    self.lr_pat_e.get(),
+                "lr_min":         self.lr_min_e.get(),
+                "lr_scheduler":   self.lr_sched_var.get(),
+                "lr_decay_steps": self.lr_decay_steps_e.get(),
+                "lr_decay_rate":  self.lr_decay_rate_e.get(),
+            })
+        elif self.selected_algo == "XGBoost":
+            cfg.update({
+                "n_estimators":    self.xgb_n_est.get(),
+                "max_depth":       self.xgb_depth.get(),
+                "learning_rate":   self.xgb_lr.get(),
+                "subsample":       self.xgb_sub.get(),
+                "colsample_bytree": self.xgb_col.get(),
+                "reg_alpha":       self.xgb_alpha.get(),
+                "reg_lambda":      self.xgb_lambda.get(),
+            })
+        elif self.selected_algo == "Random Forest":
+            cfg.update({
+                "n_estimators":      self.rf_n_est.get(),
+                "max_depth":         self.rf_depth.get(),
+                "min_samples_split": self.rf_split.get(),
+                "min_samples_leaf":  self.rf_leaf.get(),
+                "max_features":      self.rf_feat_var.get(),
+            })
+        elif self.selected_algo == "Gaussian Process":
+            cfg.update({
+                "kernel":     self.gpr_kernel_var.get(),
+                "alpha":      self.gpr_alpha.get(),
+                "n_restarts": self.gpr_restarts.get(),
+            })
+        return cfg
+
+    def restore_from_session(self, config: dict) -> None:
+        """Restore all widget values without resetting trained/model_ready flags."""
+        if not config:
+            return
+        algo = config.get("algo", "Neural Network")
+
+        # Switch algo quietly (rebuild param cards without clearing state flags)
+        if algo != self.selected_algo:
+            self.algo_var.set(algo)
+            self.selected_algo = algo
+            for w in self.param_cards_frame.winfo_children():
+                w.destroy()
+            dispatch = {
+                "Neural Network": self._build_nn_cards,
+                "XGBoost":        self._build_xgb_card,
+                "Random Forest":  self._build_rf_card,
+                "Gaussian Process": self._build_gpr_card,
+            }
+            dispatch.get(algo, self._build_nn_cards)()
+
+        def _set(entry, val):
+            if val is None:
+                return
+            entry.delete(0, "end")
+            entry.insert(0, str(val))
+
+        if algo == "Neural Network":
+            _set(self.num_layers_entry, config.get("num_layers"))
+            _set(self.neurons_entry,    config.get("neurons"))
+            if "act_hidden"    in config: self.act_var.set(config["act_hidden"])
+            if "act_out"       in config: self.out_act_var.set(config["act_out"])
+            _set(self.dropout_entry,   config.get("dropout"))
+            _set(self.l1_entry,        config.get("l1"))
+            _set(self.l2_entry,        config.get("l2"))
+            if "loss"          in config: self.loss_var.set(config["loss"])
+            if "optimizer"     in config: self.optim_var.set(config["optimizer"])
+            _set(self.lr_entry,        config.get("lr"))
+            _set(self.bs_entry,        config.get("batch_size"))
+            _set(self.ep_entry,        config.get("epochs"))
+            if "use_es"        in config: self.use_es.set(config["use_es"])
+            _set(self.es_pat_e,        config.get("es_patience"))
+            _set(self.es_del_e,        config.get("es_min_delta"))
+            if "use_reduce_lr" in config: self.use_reduce_lr.set(config["use_reduce_lr"])
+            _set(self.lr_factor_e,     config.get("lr_factor"))
+            _set(self.lr_pat_e,        config.get("lr_patience"))
+            _set(self.lr_min_e,        config.get("lr_min"))
+            if "lr_scheduler"  in config: self.lr_sched_var.set(config["lr_scheduler"])
+            _set(self.lr_decay_steps_e, config.get("lr_decay_steps"))
+            _set(self.lr_decay_rate_e,  config.get("lr_decay_rate"))
+
+        elif algo == "XGBoost":
+            _set(self.xgb_n_est,   config.get("n_estimators"))
+            _set(self.xgb_depth,   config.get("max_depth"))
+            _set(self.xgb_lr,      config.get("learning_rate"))
+            _set(self.xgb_sub,     config.get("subsample"))
+            _set(self.xgb_col,     config.get("colsample_bytree"))
+            _set(self.xgb_alpha,   config.get("reg_alpha"))
+            _set(self.xgb_lambda,  config.get("reg_lambda"))
+
+        elif algo == "Random Forest":
+            _set(self.rf_n_est,  config.get("n_estimators"))
+            _set(self.rf_depth,  config.get("max_depth"))
+            _set(self.rf_split,  config.get("min_samples_split"))
+            _set(self.rf_leaf,   config.get("min_samples_leaf"))
+            if "max_features" in config: self.rf_feat_var.set(config["max_features"])
+
+        elif algo == "Gaussian Process":
+            if "kernel" in config: self.gpr_kernel_var.set(config["kernel"])
+            _set(self.gpr_alpha,    config.get("alpha"))
+            _set(self.gpr_restarts, config.get("n_restarts"))
 
     def _show_blocked(self, message):
         for widget in self.content_frame.winfo_children():

@@ -207,10 +207,13 @@ class App(ctk.CTk):
             messagebox.showerror("Load Failed", str(e))
 
     def _save_session(self):
-        # Snapshot preprocessing widget values into state before saving
+        # Snapshot widget values into state before saving
         pp = self.frames.get("🔧  Preprocessing")
         if pp and getattr(pp, "built_ui", False):
             set_state("preprocessing_config", pp.get_session_config())
+        mb = self.frames.get("🏗  Model Builder")
+        if mb and getattr(mb, "built_ui", False):
+            set_state("model_builder_config", mb.get_session_config())
 
         if self.frames.get("🏗  Model Builder") and getattr(
             self.frames["🏗  Model Builder"], "is_running", False
@@ -276,6 +279,8 @@ class App(ctk.CTk):
         pp_cfg = session_data.get("preprocessing_config")
         if pp_cfg and get_state("data_loaded"):
             pp.restore_from_session(pp_cfg)
+
+        # Model Builder widget values restored lazily in on_show() from model_builder_config state key.
 
         # Hyperopt apply_btn is re-enabled in hyperopt.on_show() when best_params is in state.
 

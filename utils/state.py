@@ -38,6 +38,7 @@ class AppState:
             "surrogate_model": None, # Active SurrogateModel instance
             "selected_algo": None,   # Set by Hyperopt "Apply Best" to signal Model Builder
             "results_stale": False,  # Set True after each training to force Results rebuild
+            "model_builder_config": None,
             "best_params": None,
             "optuna_study": None,
             "train_losses": [],
