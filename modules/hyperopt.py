@@ -77,6 +77,10 @@ class HyperoptFrame(ctk.CTkFrame):
         if not self.built_ui:
             self._build_ui()
             self.built_ui = True
+            # Re-enable apply button when best_params are already in state
+            # (e.g. after loading a session that had HPO results)
+            if get_state("best_params"):
+                self.apply_btn.configure(state="normal", text="✨ APPLY BEST PARAMS")
 
     def _show_blocked(self, message):
         for widget in self.content_frame.winfo_children():

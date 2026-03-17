@@ -306,6 +306,22 @@ class DataLoadingFrame(ctk.CTkFrame):
     def go_to_preprocessing(self):
         self.master.navigate_to("🔧  Preprocessing")
 
+    def reset_ui(self) -> None:
+        """Reset dynamic parts of the UI for a new / cleared session."""
+        for w in self.features_scroll.winfo_children(): w.destroy()
+        for w in self.targets_scroll.winfo_children():  w.destroy()
+        for w in self.explorer_frame.winfo_children():  w.destroy()
+        self.feature_vars.clear()
+        self.target_vars.clear()
+        self._col_dtypes.clear()
+        self.status_lbl.configure(text="No file loaded.", text_color=COLORS["text_dim"])
+        self.shape_lbl.configure(text="Rows: 0 | Columns: 0")
+        self.stats_box.configure(state="normal")
+        self.stats_box.delete("0.0", "end")
+        self.stats_box.configure(state="disabled")
+        self.proceed_btn.configure(state="disabled")
+        self.type_warn_lbl.configure(text="")
+
     def restore_from_session(self, config: dict) -> None:
         """Restore the Data Loading UI from AppState after a session load."""
         df = get_state("df")

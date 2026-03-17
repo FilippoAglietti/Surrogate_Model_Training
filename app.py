@@ -182,6 +182,7 @@ class App(ctk.CTk):
         from utils.session import reset_session
         reset_session()
         self._reset_all_frame_flags()
+        self.frames["📁  Data Loading"].reset_ui()
         self.navigate_to("📁  Data Loading")
 
     def _open_session(self):
@@ -243,15 +244,21 @@ class App(ctk.CTk):
     # ── Session restore helpers ───────────────────────────────────────────────
 
     def _reset_all_frame_flags(self):
-        """Reset all module frame built_ui flags so they rebuild on next on_show."""
+        """Reset module frame built_ui flags so they rebuild on next on_show.
+
+        Only frames that use the lazy built_ui pattern have their content_frame
+        children destroyed.  DataLoadingFrame builds its widgets in __init__ so
+        we must NOT destroy them here — use DataLoadingFrame.reset_ui() instead.
+        """
         for frame in self.frames.values():
-            if hasattr(frame, "built_ui"):
-                frame.built_ui = False
             if hasattr(frame, "_explorer_built"):
                 frame._explorer_built = False
-            if hasattr(frame, "content_frame"):
-                for w in frame.content_frame.winfo_children():
-                    w.destroy()
+            if hasattr(frame, "built_ui"):
+                frame.built_ui = False
+                # Destroy only lazy-built content (created inside _build_ui)
+                if hasattr(frame, "content_frame"):
+                    for w in frame.content_frame.winfo_children():
+                        w.destroy()
 
     def _restore_ui_from_session(self, session_data: dict):
         """Orchestrate UI restoration after load_session() has populated AppState."""
@@ -270,10 +277,7 @@ class App(ctk.CTk):
         if pp_cfg and get_state("data_loaded"):
             pp.restore_from_session(pp_cfg)
 
-        # Restore Hyperopt UI (re-enable apply button if best params exist)
-        hpo = self.frames["🔍  Hyperopt"]
-        if hasattr(hpo, "apply_btn") and get_state("best_params"):
-            hpo.apply_btn.configure(state="normal", text="✨ APPLY BEST PARAMS")
+        # Hyperopt apply_btn is re-enabled in hyperopt.on_show() when best_params is in state.
 
         # Results tab is already marked stale by load_session
 
